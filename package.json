@@ -9,6 +9,11 @@
   "scripts": {
     "start": "node --experimental-strip-types server.ts",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "check": "node --check public/app.js && node --experimental-strip-types --test tests/*.test.ts"
+    "check": "npm run typecheck && node --check public/app.js && npm test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.15",
+    "typescript": "5.9.3"
   }
 }

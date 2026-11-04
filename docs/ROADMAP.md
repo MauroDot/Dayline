@@ -7,7 +7,7 @@
 - [x] New minimal responsive application shell, TypeScript HTTP server, official-source adapters and mocked tests committed.
 - [x] GitHub Actions syntax checks, Node test suite and startup smoke test passed on initial implementation.
 - [ ] Import the approved hosted prototype source/assets or reach documented visual and behavioral parity.
-- [ ] Add formal TypeScript typechecking, browser regression tests, controlled deployment packaging and release documentation.
+- [ ] Add browser regression tests, controlled deployment packaging and release documentation.
 - [ ] Verify upstream Treasury and NWS requests live with required configuration.
 - [ ] User performs physical acceptance; explicit merge approval is required.
 
@@ -18,7 +18,8 @@
 - [x] Unit tests using fake official-source responses.
 - [ ] Validate real upstream responses, API rate limits and a compliant NWS User-Agent.
 - [ ] Add observation stream and separate forecast/observation presentation.
-- [ ] Improve robust retries, persistence, monitoring, timezone handling and stale-state operational tests.
+- [ ] Add persistence, monitoring, timezone handling and operational tests.
+- [x] Add bounded retries, exact-cent debt validation and stale-state tests.
 - [ ] Live browser acceptance with no invented data.
 
 ## DL-003 — News rights and editorial review

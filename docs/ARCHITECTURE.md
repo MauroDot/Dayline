@@ -38,3 +38,7 @@ Each panel must distinguish fetched_at from source_published_at / observation_ti
 - Integration tests with mocked NWS, Treasury, voice, and Stripe.
 - Browser tests for mobile navigation, keyboard access, citation links, transcript fallback, and no cross-user account leakage.
 - Explicit physical acceptance before merging.
+
+## Foundation implementation notes
+
+Treasury amounts are validated as decimal cents and reconciled with a five-cent tolerance using integer arithmetic. Official requests use an eight-second per-attempt timeout and at most three attempts for network failures, 429 and 5xx responses. NWS requires an identifying User-Agent with contact email. Process-local caches expose retrieval timestamps and stale flags; they do not survive restarts or coordinate across instances. No source failure generates substitute measurements.

@@ -13,7 +13,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.16.0'
-      - name: Check browser syntax and run unit tests
+      - run: npm ci
+      - name: Typecheck, check browser syntax and run tests
         run: npm run check
       - name: Boot smoke test
         run: |
