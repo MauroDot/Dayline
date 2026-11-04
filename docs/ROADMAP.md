@@ -2,19 +2,24 @@
 
 ## DL-001 — Foundation
 - [x] Private repository established: MauroDot/Dayline.
-- [x] Foundation branch created.
-- [x] Product charter, architecture proposal, and milestone acceptance requirements prepared.
-- [ ] Export/import the full approved hosted prototype source and visual assets (not yet available in this repository).
-- [ ] Choose and pin the actual production framework and dependencies.
-- [ ] Add build, lint, typecheck, unit test and GitHub Actions workflows after source import.
-- [ ] Verify functional parity against the approved preview, including small-screen behavior.
-- [ ] Record checks and user acceptance; promote only with explicit authorization.
+- [x] Foundation branch and draft PR created.
+- [x] Product charter, architecture proposal and milestones prepared.
+- [x] New minimal responsive application shell, TypeScript HTTP server, official-source adapters and mocked tests committed.
+- [x] GitHub Actions syntax checks, Node test suite and startup smoke test passed on initial implementation.
+- [ ] Import the approved hosted prototype source/assets or reach documented visual and behavioral parity.
+- [ ] Add formal TypeScript typechecking, browser regression tests, controlled deployment packaging and release documentation.
+- [ ] Verify upstream Treasury and NWS requests live with required configuration.
+- [ ] User performs physical acceptance; explicit merge approval is required.
 
 ## DL-002 — Official data integrations
-- [ ] Treasury Debt to the Penny ingestion, as-of timestamps, component consistency checks.
-- [ ] NWS point forecast/observation ingestion, location selection and attribution.
-- [ ] Server-side caching, error retries, stale fallback and clear freshness labels.
-- [ ] Contract tests, observability and acceptance checks; no fabricated data.
+- [x] Treasury Debt to the Penny adapter and as-of / component consistency validation implemented.
+- [x] NWS forecast adapter, location allowlist and attribution implemented.
+- [x] Initial process-local TTL cache, stale-response labels and failure states implemented.
+- [x] Unit tests using fake official-source responses.
+- [ ] Validate real upstream responses, API rate limits and a compliant NWS User-Agent.
+- [ ] Add observation stream and separate forecast/observation presentation.
+- [ ] Improve robust retries, persistence, monitoring, timezone handling and stale-state operational tests.
+- [ ] Live browser acceptance with no invented data.
 
 ## DL-003 — News rights and editorial review
 - [ ] Select permitted content feeds and negotiate needed usage rights.
