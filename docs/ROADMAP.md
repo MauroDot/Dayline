@@ -27,7 +27,12 @@
 - [x] Internal revision-specific review transitions and local JSON persistence with fictional tests.
 - [ ] Production identity, permissions, durable transactional storage and publishing remain blocked.
 
-## DL-003B / DL-003C — News rights, editorial review and publication
+## DL-003B — Provider integration prototype
+- [x] Default-disabled GNews adapter, fictional fixture runner, and rights-aware metadata boundary.
+- [ ] Validate provider terms, provenance, retention and deletion before real data access.
+- [ ] Secure authentication, durable storage and licensed publication remain blocked.
+
+## DL-003C — News rights, editorial review and publication
 - [ ] Select permitted content feeds and negotiate needed usage rights.
 - [ ] Deduplicate story clusters while retaining originating-report provenance.
 - [ ] Evidence-linked drafts, human holds, corrections and full audit trail.

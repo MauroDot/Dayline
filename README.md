@@ -74,3 +74,7 @@ Foundation review is not production readiness. Future paid services require sepa
 ## Internal newsroom prototype
 
 DL-003A adds local TypeScript domain services under `src/newsroom`; the website and HTTP API expose no newsroom or publication endpoints. Tests under `tests/newsroom.test.ts` use explicitly fictional sources and events. Run `npm ci` and `npm run check` for typechecking, newsroom tests and existing backend/HTTP checks; browser prerequisites and commands are above. See the architecture notes for source provenance, editorial transitions, repository limitations and the production authorization block. No real news feed, automated article generation or public publishing is enabled.
+
+## Fictional ingestion fixture
+
+`npm run ingest:fixture` runs a bounded dry run using fictional data; `npm run ingest:fixture -- --write-fixture` exercises writes in a temporary repository that is removed afterwards. Neither command makes network requests. The GNews adapter is disabled by default, has no live CLI, and requires separate authorization and server-side configuration before any real request. Discovery metadata requires explicit rights and known provenance; provider text and images are discarded. Retention/deletion automation, licensing review and secure production authorization are still required. See [provider evaluation](docs/NEWS_PROVIDER_EVALUATION.md) and the architecture notes.
