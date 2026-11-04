@@ -1,0 +1,19 @@
+{
+  "name": "dayline",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "scripts": {
+    "start": "node --experimental-strip-types server.ts",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "check": "npm run typecheck && node --check public/app.js && node --check public/stories.js && npm test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.15",
+    "typescript": "5.9.3"
+  }
+}
