@@ -13,10 +13,12 @@ stories.forEach((story, index) => {
   footer.append(node('span', 'Dayline sample · Jan 1, 2026'), node('span', 'READ STORY ↗'));
   card.append(meta, title, summary, footer); storyContainer.append(card);
 });
+let lastStoryId = null;
 function showRoute() {
   const match = location.hash.match(/^#article\/([a-z-]+)$/); const story = match && stories.find(item => item.id === match[1]);
   const article = el('article-view'); el('home-view').hidden = !!story; article.hidden = !story;
   if (story) {
+    lastStoryId = story.id;
     const back = node('a', '← Back to the edition', 'back-link'); back.href = '#top-stories';
     const kicker = node('p', `${story.section.toUpperCase()} / DEMONSTRATION STORY`, 'eyebrow');
     const title = node('h1', story.title); const intro = node('p', story.summary, 'article-intro');
@@ -28,12 +30,20 @@ function showRoute() {
     const reference = node('a', story.source); reference.href = story.reference; reference.target = '_blank'; reference.rel = 'noopener noreferrer'; content.append(reference, node('h2', 'Corrections'), node('p', 'No corrections. This is a demonstration placeholder.'));
     article.replaceChildren(back, kicker, title, intro, meta, notice, content); article.focus(); window.scrollTo(0, 0);
   } else if (location.hash && !match) {
-    requestAnimationFrame(() => document.getElementById(location.hash.slice(1))?.scrollIntoView());
+    const destination = document.getElementById(location.hash.slice(1));
+    requestAnimationFrame(() => {
+      if (location.hash === '#top-stories' && lastStoryId) {
+        const link = [...document.querySelectorAll('.story-card a')].find(item => item.getAttribute('href') === `#article/${lastStoryId}`);
+        if (link) { link.focus(); lastStoryId = null; return; }
+      }
+      destination?.scrollIntoView();
+    });
   }
 }
 window.addEventListener('hashchange', showRoute); showRoute();
 const menu = el('menu-button'), navigation = el('navigation');
 menu.addEventListener('click', () => { const open = menu.getAttribute('aria-expanded') === 'true'; menu.setAttribute('aria-expanded', String(!open)); navigation.classList.toggle('open', !open); });
+navigation.addEventListener('keydown', event => { if (event.key === 'Escape' && menu.getAttribute('aria-expanded') === 'true') { menu.setAttribute('aria-expanded', 'false'); navigation.classList.remove('open'); menu.focus(); } });
 navigation.addEventListener('click', event => { if (event.target.closest('a')) { menu.setAttribute('aria-expanded', 'false'); navigation.classList.remove('open'); } });
 function setState(id, message, className = 'info') { el(id).replaceChildren(node('p', message, className)); }
 async function loadJSON(url) { const response = await fetch(url, { headers: { Accept: 'application/json' } }); if (!response.ok) throw Error('Official feed unavailable'); return response.json(); }

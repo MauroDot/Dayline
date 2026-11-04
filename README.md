@@ -55,3 +55,18 @@ https://dayline-daily-tom.wintry-olm-1143.chatgpt.site
 ## DL-001C interface preview
 
 The edition uses fictional demonstration stories, labeled throughout; links provide general background, not evidence of those examples. Market prices and audio are unavailable. Official debt and weather continue to use the existing server adapters. The interface is a recreation informed by the documented design direction; the separate hosted prototype was not available for a parity comparison. Browser checks can be run with `python -m unittest discover -s tests/browser -v` when Python Playwright and Chromium are installed (set `CHROMIUM_PATH` if needed).
+
+## Windows development
+
+Install Node.js 22.16.0 or later and npm 10 or later, then in PowerShell from the checkout run `npm.cmd ci` and `npm.cmd run check`. Set a real identifying NWS contact for the current shell with `$env:NWS_USER_AGENT = 'Dayline/0.1 (contact@your-domain)'`, then start with `npm.cmd start`. Replace the example with your own contact; do not commit it. `.env.example` documents variables but is not automatically loaded. `PORT` is optional and defaults to 3000. For browser tests install Python, Playwright and a compatible Chromium; set `CHROMIUM_PATH` to its executable if it is not `/usr/bin/chromium`. Run `python -m unittest discover -s tests/browser -v`.
+
+Treasury Fiscal Data and the National Weather Service are the current official sources. Treasury's reporting date and the retrieval time are separate; NWS source update times are shown when supplied. The cache is in memory and resets when the server stops. Live data requires network access and an identifying NWS user agent; no market feed, audio, billing, or publishing is active. Demonstration stories are fictional and general reference links do not substantiate them. A focused automated accessibility audit cannot replace assistive-technology testing. The reference prototype was inaccessible through the configured network proxy, so exact visual parity is unverified.
+
+## Foundation acceptance and recovery
+
+- [ ] Recheck desktop and mobile layouts, keyboard access, contrast, screen readers, and 200% zoom on target devices.
+- [ ] Run automated checks and physically verify Windows startup, Treasury data and NWS weather with a valid contact.
+- [ ] Compare the authorized prototype, document differences, and obtain owner acceptance.
+- [ ] Confirm rights, corrections, editorial approval, security, and operational controls before any public deployment.
+
+Foundation review is not production readiness. Future paid services require separately approved cost limits, quotas and alerts; no paid API is enabled here. Never publish unreviewed generated news or commit credentials. To recover locally, stop the server, check `git status`, preserve uncommitted work, and start from a separately reviewed known-good commit in a new checkout or worktree. Do not reset a checkout containing unreviewed work. Public rollback and deployment procedures remain to be designed and approved.

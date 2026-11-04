@@ -59,6 +59,32 @@ class BrowserUI(unittest.TestCase):
         self.assertIn('provisional', self.page.locator('#plus').inner_text())
         self.assertIn('Unavailable', self.page.locator('#markets').inner_text())
 
+    def test_article_focus_is_restored(self):
+        link = self.page.locator('.story-card a').first
+        link.focus(); self.page.keyboard.press('Enter')
+        self.page.wait_for_function("document.activeElement.id === 'article-view'")
+        self.page.locator('.back-link').click()
+        self.page.wait_for_function("() => document.activeElement.getAttribute('href') === '#article/community'")
+        self.assertEqual(link.evaluate("element => document.activeElement === element"), True)
+
+    def test_mobile_menu_escape_returns_focus(self):
+        self.page.set_viewport_size({'width': 390, 'height': 844})
+        menu = self.page.locator('#menu-button'); menu.click()
+        self.page.locator('#navigation a').first.focus(); self.page.keyboard.press('Escape')
+        self.assertEqual(menu.get_attribute('aria-expanded'), 'false')
+        self.assertTrue(menu.evaluate('element => document.activeElement === element'))
+
+    def test_large_debt_and_timestamps_at_200_percent_equivalent(self):
+        self.page.unroute('**/api/debt')
+        self.page.route('**/api/debt', lambda route: route.fulfill(json={'data': {'total': '123456789012345678901234567890.00', 'heldByPublic': '123456789012345678901234567889.00', 'intragovernmental': '1.00', 'asOf': '2026-01-01', 'fetchedAt': '2026-01-02T00:00:00Z'}, 'stale': False}))
+        self.page.set_viewport_size({'width': 320, 'height': 800})
+        self.page.reload(wait_until='networkidle')
+        self.assertIn('Reported as of 2026-01-01', self.page.locator('#debt').inner_text())
+        self.assertIn('Retrieved', self.page.locator('#debt').inner_text())
+        self.assertIn('FRESH', self.page.locator('#debt').inner_text())
+        self.assertFalse(self.page.evaluate('document.documentElement.scrollWidth > innerWidth'))
+        self.assertEqual(self.page.locator('#debt').get_attribute('role'), 'status')
+
     def test_weather_city_selection(self):
         calls = []
         def weather(route):
@@ -71,8 +97,8 @@ class BrowserUI(unittest.TestCase):
         self.assertIn('Chicago', calls[0]); self.assertIn('NWS updated', self.page.locator('#weather').inner_text())
 
     def test_responsive_navigation_and_screenshots(self):
-        out = Path('/tmp/dayline-dl001c-screenshots'); out.mkdir(exist_ok=True)
-        for width in [1440, 768, 390]:
+        out = Path('/tmp/dayline-dl001d-screenshots'); out.mkdir(exist_ok=True)
+        for width in [1920, 1440, 768, 390, 320]:
             self.page.set_viewport_size({'width': width, 'height': 900})
             self.assertFalse(self.page.evaluate('document.documentElement.scrollWidth > innerWidth'), f'overflow at {width}')
             self.page.screenshot(path=str(out / f'dayline-{width}.png'), full_page=True)
