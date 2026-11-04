@@ -42,6 +42,7 @@ class BrowserUI(unittest.TestCase):
         self.assertEqual(self.page.locator('.story-card').count(), 4)
         self.assertIn('not current events', self.page.locator('#top-stories').inner_text())
         self.page.locator('.story-card a').first.click()
+        self.page.locator('#article-view').wait_for(state='visible')
         self.assertTrue(self.page.locator('#article-view').is_visible())
         self.assertIn('Fictional demonstration', self.page.locator('#article-view').inner_text())
         self.assertIn('What remains uncertain', self.page.locator('#article-view').inner_text())
