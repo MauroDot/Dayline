@@ -39,6 +39,9 @@ export class Newsroom {
       state.sources.push(source); audit(state, 'SOURCE_INGESTED', actor, null); return source;
     });
   }
+  async recordIngestionOutcome(outcome: 'PROCESSED' | 'DUPLICATE' | 'REJECTED' | 'FAILED', actor: string): Promise<void> {
+    await this.repository.transact(state => { audit(state, `INGESTION_${outcome}`, actor, null); });
+  }
   async independentCount(ids: string[]): Promise<number> {
     const state = await this.snapshot();
     return new Set(ids.map(id => { const source = state.sources.find(s => s.id === id); if (!source) throw Error('Unknown source'); return source.originId; })).size;

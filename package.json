@@ -10,7 +10,8 @@
     "start": "node --experimental-strip-types server.ts",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "check": "npm run typecheck && node --check public/app.js && node --check public/stories.js && npm test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ingest:fixture": "node --experimental-strip-types src/ingestion/runner.ts"
   },
   "devDependencies": {
     "@types/node": "22.19.15",
