@@ -51,3 +51,7 @@ https://dayline-daily-tom.wintry-olm-1143.chatgpt.site
 2. Add deployment packaging and reproducible browser tests.
 3. Continue monitoring live NWS and Treasury compatibility and official API rate rules.
 4. Record user acceptance and explicit promotion approval before merging.
+
+## DL-001C interface preview
+
+The edition uses fictional demonstration stories, labeled throughout; links provide general background, not evidence of those examples. Market prices and audio are unavailable. Official debt and weather continue to use the existing server adapters. The interface is a recreation informed by the documented design direction; the separate hosted prototype was not available for a parity comparison. Browser checks can be run with `python -m unittest discover -s tests/browser -v` when Python Playwright and Chromium are installed (set `CHROMIUM_PATH` if needed).

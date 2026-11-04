@@ -30,7 +30,7 @@ test('static allowlist and content security policy', async () => {
   assert.match(r.headers.get('content-security-policy') ?? '', /frame-ancestors 'none'/);
   assert.match(await r.text(), /dayline/i);
   for (const path of ['/server.ts', '/.env', '/missing', '/%2e%2e/server.ts']) assert.equal((await fetch(base + path)).status, 404);
-  for (const path of ['/style.css', '/app.js']) assert.equal((await fetch(base + path)).status, 200);
+  for (const path of ['/style.css', '/app.js', '/stories.js']) assert.equal((await fetch(base + path)).status, 200);
 });
 test('invalid inputs and methods', async () => {
   assert.equal((await fetch(base + '/api/weather?city=constructor')).status, 400);
