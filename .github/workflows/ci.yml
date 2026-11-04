@@ -1,0 +1,28 @@
+name: Foundation checks
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Check browser syntax and run unit tests
+        run: npm run check
+      - name: Boot smoke test
+        run: |
+          node --experimental-strip-types server.ts > /tmp/dayline.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:3000/api/health; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/ > /dev/null
+          curl -fsS http://127.0.0.1:3000/style.css > /dev/null
