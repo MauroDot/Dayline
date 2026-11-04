@@ -5,29 +5,47 @@
 An evidence-first daily news and economic intelligence platform by MauroDot.
 
 ## Status
-**Foundation 001 — in progress.** This GitHub repository currently contains the project charter and implementation plan. The existing hosted visual prototype has **not yet been imported**; live integrations, scheduled news automation, OpenAI narration, and paid subscriptions are **not active**.
+**Foundation 001 — active, initial runnable application committed.** The GitHub branch provides a new responsive shell, Node 22 TypeScript server, official data adapters, mocked integration tests, and GitHub Actions CI. This is **not yet a faithful import of the separately hosted original design**. Official upstream API responses have not yet been verified in a live environment. News automation, AI narration and payments are not implemented.
 
 - [Project charter](docs/PROJECT_CHARTER.md)
 - [Architecture proposal](docs/ARCHITECTURE.md)
 - [MVP roadmap and acceptance checklist](docs/ROADMAP.md)
+- [Open draft PR #1](https://github.com/MauroDot/Dayline/pull/1)
+
+## Local development
+Requires Node.js **22.16.0 or later** (native experimental TypeScript type stripping). No third-party packages are required for this foundation shell.
+
+```bash
+npm run check
+npm start
+```
+
+Open http://localhost:3000. Public page and server routes:
+- `GET /` — foundation UI
+- `GET /api/health` — readiness probe
+- `GET /api/debt` — last available Treasury Debt to the Penny report
+- `GET /api/weather?city=Tulsa` — NWS point forecast for an allowlisted city
+
+A production-ready NWS User-Agent must be configured using `NWS_USER_AGENT` with identifying contact information. When official sources fail, the interface shows an unavailable message; the server uses cached valid records only within its configured staleness window. The cache is process-local, suitable for MVP testing but not a distributed deployment.
 
 ## Product vision
 A concise, trustworthy daily briefing covering U.S. and world news, weather, national debt and market context, with source transparency, corrections and synthetic narration. Main coverage and the standard audio briefing remain free.
 
-**Dayline Plus** is a provisional $2.99/month tier for voice choice and listening convenience. Stripe integration is test-only until explicit approval. No live billing or API charges are enabled by this repository.
+**Dayline Plus** is a provisional $2.99/month tier for voice choice and listening convenience. OpenAI narration and Stripe billing must be added and approved in controlled milestones; no live billing or paid API traffic is enabled here.
 
-## Prototype
-Private hosted design reference:
+## Design reference
+Private hosted visual prototype (separate codebase; not automatically synchronized):
 https://dayline-daily-tom.wintry-olm-1143.chatgpt.site
 
 ## Development policy
-- Features are developed on branches and reviewed before merging to `main`.
-- Do not publish articles from unverified AI output.
-- Do not commit secrets or expose API credentials to the browser.
-- Do not enable production payments or costly API operations without explicit approval.
-- Preserve data-as-of timestamps and visibly distinguish sample data from real data.
+- Work on feature branches and require explicit authorization before merging to `main`.
+- Do not publish unreviewed AI-generated articles.
+- Never commit API secrets or transmit secret keys to the browser.
+- Preserve source timestamps and clearly distinguish official, stale, sample and unavailable states.
+- Run CI plus live integration, browser and user acceptance tests before declaring milestone completion.
 
-## Current next steps
-1. Import the approved prototype source and media with rights and dependency verification.
-2. Establish pinned TypeScript framework, local build and test suite.
-3. Connect official U.S. Treasury and NWS data in the DL-002 milestone.
+## Remaining Foundation 001 work
+1. Retrieve/import approved hosted design source/assets or recreate to documented visual parity with rights review.
+2. Add formal TypeScript typechecking, dependencies as needed, deployment packaging and reproducible browser tests.
+3. Confirm NWS and Treasury upstream compatibility in a controlled live environment, including official API rate rules.
+4. Record user acceptance and explicit promotion approval before merging.
