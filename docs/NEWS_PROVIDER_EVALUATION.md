@@ -10,3 +10,11 @@ This is a candidate inventory, not a licensing decision. No account, subscriptio
 | Associated Press | [AP Newsroom](https://www.ap.org/solutions/platforms/ap-newsroom/) · [AP licensing](https://www.ap.org/solutions/content-production/) | Obtain current terms and pricing directly; confirm specific licensed content, distribution, storage and AI uses. |
 
 These URLs are starting points, not evidence that Dayline holds rights. Ingestion must remain development-only until provider terms, publisher rights, retention/deletion duties, provenance and commercial usage are explicitly reviewed and approved. No provider is represented as approved.
+
+## Current implementation boundary
+
+The private policy registry approves only invented `fictional-fixture` metadata for development checks. It contains no GNews, NewsAPI, Guardian, AP or other real-provider grant. A server-side key, successful API response, caller-provided policy or actor assertion does not confer rights. Each accepted registry policy records its provider, version, review status, evidence reference, effective date, expiry, retention period and separate use permissions. Existing records retain their original snapshot and deadlines when policies change.
+
+Provider text and images are discarded. Unknown or disputed provenance can enter metadata-only quarantine only when the applicable policy permits it; otherwise the item is discarded. An explicit recorded provenance decision is required before imported metadata becomes an eligible source. Identifying a syndicated original prevents counting copies as independent, but neither classification nor an actor label proves ownership, editorial independence or secure reviewer identity.
+
+Manual local cleanup removes expired or ineligible managed metadata and linked ingestion details, retaining only policy-permitted minimal deletion records. It does not enforce deletion in backups, external copies or retained editorial history and does not provide secure erasure. Actual licensing approval, authenticated authorization, production persistence and external retention safeguards remain prerequisites for real-provider use and public publication. No live provider or paid service is activated by this milestone.

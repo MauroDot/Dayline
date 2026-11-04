@@ -32,6 +32,15 @@
 - [ ] Validate provider terms, provenance, retention and deletion before real data access.
 - [ ] Secure authentication, durable storage and licensed publication remain blocked.
 
+## DL-003B-R1 — Rights, provenance and retention hardening
+- [x] Central, versioned fictional-only policy registry; deny caller permission overrides and all real providers.
+- [x] Metadata quarantine and explicit provenance decisions; preserve captured rights and retention deadlines.
+- [x] Atomic per-item ingestion outcomes, snapshot-only dry runs and schema-1 history migration.
+- [x] Manual retention cleanup with policy-permitted minimal deletion records and source eligibility checks.
+- [ ] Approve actual provider contracts and rights evidence before any real ingestion.
+- [ ] Enforce retention across production storage, backups and external copies; local cleanup is not secure erasure.
+- [ ] Add authenticated reviewers, authorization and production transactions before publication or unattended operation.
+
 ## DL-003C — News rights, editorial review and publication
 - [ ] Select permitted content feeds and negotiate needed usage rights.
 - [ ] Deduplicate story clusters while retaining originating-report provenance.

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { canonicalURL, validateSource, validateEvidence, similarityCandidates, type Source, type Story, type Status, type State, type Audit } from './model.ts';
 import { JsonRepository } from './store.ts';
+import { sourceId } from '../ingestion/metadata.ts';
+import { eligibleSource } from '../ingestion/eligibility.ts';
 
 const transitions: Record<Status, Status[]> = {
   INGESTED: ['CLUSTERED', 'ON_HOLD', 'REJECTED'], CLUSTERED: ['DRAFT', 'ON_HOLD', 'REJECTED'],
@@ -29,22 +31,22 @@ function checkStory(story: Story, state: State): void {
 }
 export class Newsroom {
   private readonly repository: JsonRepository;
-  constructor(repository: JsonRepository) { this.repository = repository; }
+  private readonly clock: () => string;
+  constructor(repository: JsonRepository, options: { clock?: () => string } = {}) { this.repository = repository; this.clock = options.clock ?? now; }
   async snapshot(): Promise<State> { return this.repository.read(); }
   async ingest(input: Omit<Source, 'canonicalUrl'>, actor: string): Promise<Source> {
     return this.repository.transact(state => {
       const source: Source = { ...input, canonicalUrl: canonicalURL(input.url) }; validateSource(source);
+      if (!new URL(source.url).hostname.endsWith('.test') || source.id.startsWith('url-') || source.rights !== 'fictional test fixture only') throw Error('Legacy fixture ingestion only; provider sources require registry workflow');
+      if (state.quarantine.some(q => canonicalURL(q.providerMetadata.url) === source.canonicalUrl) || state.managedSources.some(m => canonicalURL(m.providerMetadata.url) === source.canonicalUrl) || state.deletions.some(d => d.sourceId === sourceId(source.url))) throw Error('Provider metadata cannot bypass registry or quarantine');
       if (state.sources.some(s => s.id === source.id || s.canonicalUrl === source.canonicalUrl)) throw Error('Duplicate source');
       if (source.type === 'SYNDICATED' && !state.sources.some(s => s.id === source.originId && s.type !== 'SYNDICATED')) throw Error('Unknown original report');
       state.sources.push(source); audit(state, 'SOURCE_INGESTED', actor, null); return source;
     });
   }
-  async recordIngestionOutcome(outcome: 'PROCESSED' | 'DUPLICATE' | 'REJECTED' | 'FAILED', actor: string): Promise<void> {
-    await this.repository.transact(state => { audit(state, `INGESTION_${outcome}`, actor, null); });
-  }
   async independentCount(ids: string[]): Promise<number> {
     const state = await this.snapshot();
-    return new Set(ids.map(id => { const source = state.sources.find(s => s.id === id); if (!source) throw Error('Unknown source'); return source.originId; })).size;
+    return new Set(ids.flatMap(id => { const source = state.sources.find(s => s.id === id); if (!source) throw Error('Unknown source'); return eligibleSource(state, source, this.clock()) ? [source.originId] : []; })).size;
   }
   async candidates(headline: string): Promise<string[]> {
     const state = await this.snapshot(); const latest = new Map(state.revisions.map(s => [s.id, s]));
@@ -70,6 +72,7 @@ export class Newsroom {
   async transition(id: string, next: Status, actor: string): Promise<Story> {
     return this.repository.transact(state => {
       const prior = current(state, id); const reviewer = actorName(actor);
+      if (['APPROVED', 'PUBLISHED'].includes(next) && prior.sourceIds.some(sourceId => { const source = state.sources.find(s => s.id === sourceId); return !source || !eligibleSource(state, source, this.clock()); })) throw Error('Ineligible source for editorial approval or publication');
       if (!transitions[prior.status].includes(next)) throw Error('Invalid editorial transition');
       if (next === 'CLUSTERED' && !prior.clusterId) throw Error('Cluster identifier required');
       if (next === 'APPROVED' && (!prior.evidence.length || prior.evidence.some(e => e.verification !== 'VERIFIED' || !e.support.length))) throw Error('Verified supported claims required');
