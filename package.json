@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node --experimental-strip-types server.ts",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "check": "npm run typecheck && node --check public/app.js && npm test",
+    "check": "npm run typecheck && node --check public/app.js && node --check public/stories.js && npm test",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

@@ -43,7 +43,7 @@ return http.createServer(async (req, res) => {
     }
     if (url.pathname.startsWith("/api/")) return json(res, 404, { error: "Unknown endpoint" });
     const asset = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
-    if (!["index.html", "style.css", "app.js"].includes(asset)) return json(res, 404, { error: "Not found" });
+    if (!["index.html", "style.css", "app.js", "stories.js"].includes(asset)) return json(res, 404, { error: "Not found" });
     const body = await readFile(path.join(root, asset));
     res.writeHead(200, { "Content-Type": types[path.extname(asset)] + "; charset=utf-8", "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" });
     return res.end(req.method === "HEAD" ? undefined : body);
