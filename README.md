@@ -70,3 +70,7 @@ Treasury Fiscal Data and the National Weather Service are the current official s
 - [ ] Confirm rights, corrections, editorial approval, security, and operational controls before any public deployment.
 
 Foundation review is not production readiness. Future paid services require separately approved cost limits, quotas and alerts; no paid API is enabled here. Never publish unreviewed generated news or commit credentials. To recover locally, stop the server, check `git status`, preserve uncommitted work, and start from a separately reviewed known-good commit in a new checkout or worktree. Do not reset a checkout containing unreviewed work. Public rollback and deployment procedures remain to be designed and approved.
+
+## Internal newsroom prototype
+
+DL-003A adds local TypeScript domain services under `src/newsroom`; the website and HTTP API expose no newsroom or publication endpoints. Tests under `tests/newsroom.test.ts` use explicitly fictional sources and events. Run `npm ci` and `npm run check` for typechecking, newsroom tests and existing backend/HTTP checks; browser prerequisites and commands are above. See the architecture notes for source provenance, editorial transitions, repository limitations and the production authorization block. No real news feed, automated article generation or public publishing is enabled.

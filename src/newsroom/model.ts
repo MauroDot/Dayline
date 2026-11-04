@@ -1,0 +1,39 @@
+/** Internal, fictional-test-only newsroom records. No identity authentication is provided. */
+export type SourceType = 'PRIMARY' | 'ORIGINAL' | 'SYNDICATED' | 'SECONDARY';
+export type Verification = 'UNVERIFIED' | 'VERIFIED' | 'DISPUTED';
+export type Status = 'INGESTED' | 'CLUSTERED' | 'DRAFT' | 'NEEDS_REVIEW' | 'APPROVED' | 'PUBLISHED' | 'REJECTED' | 'ON_HOLD' | 'CORRECTION_REQUIRED';
+export interface Source { id: string; publisher: string; url: string; canonicalUrl: string; type: SourceType; publishedAt: string; retrievedAt: string; originId: string; rights: string; verification: Verification }
+export interface Evidence { id: string; claim: string; support: string[]; contradict: string[]; verification: Verification; uncertainty: string; reviewerDecisions: string[] }
+export interface Story { id: string; headline: string; topic: string; summary: string; geography: string; eventAt: string | null; firstSeenAt: string; updatedAt: string; clusterId: string | null; evidence: Evidence[]; sourceIds: string[]; status: Status; version: number }
+export interface Approval { storyId: string; version: number; reviewer: string; at: string }
+export interface Audit { id: string; storyId: string | null; action: string; actor: string; at: string; version: number | null }
+export interface State { schema: 1; sources: Source[]; revisions: Story[]; approvals: Approval[]; audit: Audit[] }
+export const emptyState = (): State => ({ schema: 1, sources: [], revisions: [], approvals: [], audit: [] });
+export function canonicalURL(raw: string): string {
+  const u = new URL(raw);
+  if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) throw Error('Invalid source URL');
+  u.hash = ''; u.hostname = u.hostname.toLowerCase();
+  for (const key of [...u.searchParams.keys()]) if (/^(utm_.+|fbclid|gclid)$/i.test(key)) u.searchParams.delete(key);
+  u.searchParams.sort();
+  if (u.pathname !== '/') u.pathname = u.pathname.replace(/\/+$/, '');
+  return u.toString();
+}
+export function validateSource(source: Source): void {
+  if (![source.id, source.publisher, source.originId, source.rights].every(x => typeof x === 'string' && x.trim())) throw Error('Missing source fields');
+  if (!['PRIMARY', 'ORIGINAL', 'SYNDICATED', 'SECONDARY'].includes(source.type) || !['UNVERIFIED', 'VERIFIED', 'DISPUTED'].includes(source.verification)) throw Error('Invalid source classification');
+  if (!Number.isFinite(Date.parse(source.publishedAt)) || !Number.isFinite(Date.parse(source.retrievedAt))) throw Error('Invalid source timestamp');
+  if (canonicalURL(source.url) !== source.canonicalUrl) throw Error('Invalid canonical URL');
+  if (source.type !== 'SYNDICATED' && source.originId !== source.id) throw Error('Original source must identify itself');
+  if (source.type === 'SYNDICATED' && source.originId === source.id) throw Error('Syndication requires original source');
+}
+export function validateEvidence(e: Evidence, sourceIds: Set<string>): void {
+  if (!e.id?.trim() || !e.claim?.trim() || !Array.isArray(e.support) || !Array.isArray(e.contradict) || !Array.isArray(e.reviewerDecisions) || typeof e.uncertainty !== 'string' || !['UNVERIFIED', 'VERIFIED', 'DISPUTED'].includes(e.verification)) throw Error('Invalid evidence');
+  if (e.verification === 'VERIFIED' && e.support.length === 0) throw Error('Verified claim requires supporting evidence');
+  if ([...e.support, ...e.contradict].some(id => !sourceIds.has(id))) throw Error('Unknown evidence source');
+}
+/** Candidate suggestions are never automatic merges. */
+export function similarityCandidates(headline: string, stories: Story[]): string[] {
+  const words = (s: string) => new Set(s.toLowerCase().match(/[a-z0-9]{4,}/g) ?? []);
+  const a = words(headline);
+  return stories.filter(s => { const b = words(s.headline); return [...a].filter(w => b.has(w)).length >= 2; }).map(s => s.id).sort();
+}

@@ -22,7 +22,12 @@
 - [x] Add bounded retries, exact-cent debt validation and stale-state tests.
 - [ ] Live browser acceptance with no invented data.
 
-## DL-003 — News rights and editorial review
+## DL-003A — Internal newsroom foundation
+- [x] Typed source, claim and story records with provenance and duplicate detection.
+- [x] Internal revision-specific review transitions and local JSON persistence with fictional tests.
+- [ ] Production identity, permissions, durable transactional storage and publishing remain blocked.
+
+## DL-003B / DL-003C — News rights, editorial review and publication
 - [ ] Select permitted content feeds and negotiate needed usage rights.
 - [ ] Deduplicate story clusters while retaining originating-report provenance.
 - [ ] Evidence-linked drafts, human holds, corrections and full audit trail.
