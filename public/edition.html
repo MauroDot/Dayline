@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173d33">
+  <meta name="description" content="A fictional development edition of Dayline. Not publicly published.">
+  <title>Fictional daily edition — Dayline</title>
+  <link rel="stylesheet" href="/dev/edition/edition.css">
+  <script type="module" src="/dev/edition/edition.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#edition-main">Skip to edition content</a>
+  <div class="development-banner">
+    <div class="wrap banner-inner"><span>Fictional · Development only</span><span>Not publicly published</span></div>
+  </div>
+  <header class="site-header">
+    <div class="wrap masthead">
+      <a class="home-link" href="/">← Back to the homepage</a>
+      <a class="brand" href="/" aria-label="Dayline homepage">dayline<span>.</span><small>A CLEARER VIEW OF TODAY</small></a>
+      <p class="masthead-note">A little more context.<br>A clearer perspective.</p>
+    </div>
+  </header>
+  <main id="edition-main" class="wrap" tabindex="-1">
+    <div class="edition-intro">
+      <div><p class="eyebrow">The daily edition <span aria-hidden="true">/</span> Fictional preview</p><h1>The daily edition<span class="gold">.</span></h1><p class="introduction">Fictional stories, with sources in view and room for uncertainty.</p></div>
+      <div class="edition-seal" aria-hidden="true"><span>✳</span><p>CONTEXT<br>BEFORE CERTAINTY</p></div>
+    </div>
+    <div id="edition-data-header" class="edition-folio" hidden>
+      <div class="folio-date"><time id="edition-date"></time><span id="edition-timezone"></span></div>
+      <div class="folio-review"><span id="edition-state" class="state-label"></span><span id="edition-revision"></span><p id="edition-review"></p></div>
+    </div>
+    <div class="status-row"><p id="edition-status" role="status" aria-live="polite" aria-atomic="true" data-state="loading">Loading the fictional edition…</p><button id="edition-refresh" type="button">Refresh edition <span aria-hidden="true">↻</span></button></div>
+    <nav id="edition-navigation" aria-label="Edition sections" hidden></nav>
+    <div id="edition-content" aria-busy="true"></div>
+    <aside class="audio-placeholder" aria-labelledby="audio-heading"><span class="audio-symbol" aria-hidden="true">✳</span><div><p class="eyebrow">A future moment for perspective</p><h2 id="audio-heading">Audio briefing — coming soon</h2><p>No audio briefing is available.</p></div></aside>
+  </main>
+  <footer><div class="wrap footer-inner"><a class="brand footer-brand" href="/" aria-label="Dayline homepage">dayline<span>.</span></a><p>Fictional development edition.<br>Not publicly published.</p><a class="back-top" href="#edition-main">Back to the top ↑</a></div></footer>
+</body>
+</html>

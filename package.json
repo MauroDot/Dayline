@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node --experimental-strip-types server.ts",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "check": "npm run typecheck && node --check public/app.js && node --check public/stories.js && npm test",
+    "check": "npm run typecheck && node --check public/app.js && node --check public/stories.js && node --check public/edition.js && npm test",
     "typecheck": "tsc --noEmit",
     "ingest:fixture": "node --experimental-strip-types src/ingestion/runner.ts",
     "retention:fixture": "node --experimental-strip-types src/ingestion/cleanup-runner.ts",
