@@ -15,7 +15,7 @@ An active proposal records:
 - Model identity/version, prompt-template version, generation time and expiry.
 - Advisory language suggestions and usage/estimated-cost metadata.
 
-Proposal content is immutable. A new generation creates a separate proposal; review changes its review version/state rather than rewriting factual content. Schema 4 adds draft and draft-review collections. Reading schema 3 preserves its retention-review flag; reading schema 1/2 retains the conservative review hold. Migration is in memory until a successful transaction writes the file.
+Proposal content is immutable. A new generation creates a separate proposal; review changes its review version/state rather than rewriting factual content. Schema 4 introduced draft and draft-review collections; current schema 5 also stores internal edition revisions and reviews without changing proposal authorization. Reading schema 3 preserves its retention-review flag; reading schema 1/2 retains the conservative review hold. Migration is in memory until a successful transaction writes the file.
 
 ## Eligibility and rights
 

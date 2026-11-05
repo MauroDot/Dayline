@@ -31,11 +31,11 @@ Rejected and duplicate ingestion attempts keep per-attempt counts and atomic out
 
 ## Repository retention-review hold
 
-Applying metadata deletion sets schema-4 `retentionReviewRequired` to true. Prior deletion markers, identifying audit orphans or redaction of orphan historical references also require the hold. This repository-wide boolean contains no source ID, URL, digest, publisher or reviewer identity. It remains after finite markers disappear and blocks all provider ingestion, legacy fixture ingestion, provenance resolution, proposal generation/use and new approval/publication. Sources cannot count as eligible evidence while the repository is held.
+Applying metadata deletion sets schema-5 `retentionReviewRequired` to true. Prior deletion markers, identifying audit orphans or redaction of orphan historical references also require the hold. This repository-wide boolean contains no source ID, URL, digest, publisher or reviewer identity. It remains after finite markers disappear and blocks all provider ingestion, legacy fixture ingestion, provenance resolution, proposal generation/use and new approval/publication. Sources cannot count as eligible evidence while the repository is held.
 
 There is no application API, CLI flag or automated policy upgrade that clears the hold. A separately designed human and legal review process is required before resuming a repository with deletion history. Changing the file or using a fresh repository is not a reviewed recovery or rights procedure; the prototype cannot enforce deletion history across those boundaries.
 
-A new empty schema-4 repository starts without the hold. Reading schema 1 or 2 converts its state to schema 4 in memory with the hold true because earlier deletion history cannot be proved complete; schema 3 preserves its existing hold value. Empty proposal/review collections are added. Reading alone does not rewrite the file; the next successful transaction persists schema 4. Migration preserves records for inspection rather than retroactively approving their rights. Cleanup can then redact orphan source references left by earlier cleanup even when no managed metadata candidate remains.
+A new empty schema-5 repository starts without the hold. Reading schema 1 or 2 converts its state to schema 5 in memory with the hold true because earlier deletion history cannot be proved complete; schema 3/4 preserves its existing hold value. Missing proposal and edition collections are added empty, without granting approval. Reading alone does not rewrite the file; the next successful transaction persists schema 5. Migration preserves records for inspection rather than retroactively approving their rights. Cleanup can then redact orphan source references left by earlier cleanup even when no managed metadata candidate remains.
 
 ## Editorial history redaction
 
@@ -48,6 +48,10 @@ Redacted stories cannot be edited, transitioned, approved or published, includin
 ## Generated proposal retention
 
 Editorial proposals expire no later than their captured source-retention and policy deadlines. Story edits/transitions, service snapshots/reviews and applied retention cleanup recheck their eligibility. Invalidation removes generated text, source/story links, policy references and other payload; only the proposal ID, invalidated state/time and generic reason remain. Related review records retain procedural versions/states and a safe timestamp, with story revision cleared and actor assertions replaced by a placeholder. No raw prompt or rejected model output is stored. The [AI editorial design](AI_EDITORIAL_DESIGN.md) describes the fictional-only rights and review boundary. These local checks have no background expiry scheduler and do not erase external copies.
+
+## Internal edition retention
+
+Every retained edition revision is revalidated against its exact current newsroom-approved story revision, evidence, managed source metadata and captured excerpt/internal-analysis permissions. Story changes, snapshots, edits, reviews and applied retention cleanup trigger this check. Ineligible revisions become minimal invalidated markers: licensed headlines, summaries, uncertainties, attribution URLs, source/story references and suggestions are removed. Linked edition-review assertions are scrubbed. The repository retention-review hold invalidates edition snapshots and blocks readiness; rebuilding an invalidated edition requires fresh eligible placements and starts again at assembly. No edition state authorizes public publication. These local checks have no expiry scheduler and cannot erase external copies. See [edition design](EDITION_DESIGN.md).
 
 ## Manual fixture commands
 

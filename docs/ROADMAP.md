@@ -59,10 +59,20 @@
 - [ ] Select real permitted feeds and approve contracts, including AI/derived-content and retention rights.
 - [ ] Implement authenticated production reviewers, authorization, durable transactions and approved publication operations.
 
-## DL-004 — Scheduled editions
-- [ ] Versioned 06:00 America/Chicago edition, explicit review gate, monitoring and retries.
-- [ ] Data refresh schedules independent from edition publication.
-- [ ] Demonstrate idempotent publishing and graceful degraded operation.
+## DL-004A — Daily edition assembly foundation
+- [x] Typed, date/timezone-scoped fictional editions with canonical sections, stable placement order and duplicate prevention.
+- [x] Exact approved newsroom revision/approval and managed-source rights/evidence eligibility requirements.
+- [x] Revision-specific internal review, unauthenticated assertions and optimistic concurrency; no publication state.
+- [x] Story/rights/retention invalidation and scrubbing of affected edition payload and review identities.
+- [x] Internal fictional JSON preview; homepage and official-data panels remain separate.
+- [x] DL-004A local validation on Node 22.16.0: TypeScript, 282/282 backend/domain tests and 7/7 Chromium regressions passed; see [validation report](DL-004A_VALIDATION.md).
+- [ ] Complete physical acceptance and separately authorized production work.
+
+## DL-004 — Remaining edition operations
+- [ ] Authenticated production review and explicitly authorized publication with durable storage.
+- [ ] Versioned 06:00 America/Chicago scheduling, monitoring and retries.
+- [ ] Keep official-data refresh schedules independent from edition publication.
+- [ ] Demonstrate idempotent publishing, recovery and graceful degraded operation before public release.
 
 ## DL-005A — Voice and premium feasibility
 - [ ] Verify current OpenAI speech endpoints, voices, model lifecycles and rates.
