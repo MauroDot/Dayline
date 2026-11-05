@@ -9,6 +9,7 @@ export interface RegistryPolicy extends RightsPolicy {
   evidenceReference: string;
   quarantineMetadata: boolean;
   minimalAudit: boolean;
+  auditRetentionDays: number;
 }
 
 export type PolicyStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'SUPERSEDED' | 'UNKNOWN';
@@ -21,7 +22,7 @@ const booleanFields = Object.freeze([
 
 const snapshotFields = Object.freeze([
   'id', 'providerId', 'version', 'effectiveAt', 'expiresAt', 'evidenceReference',
-  'retentionDays', ...booleanFields,
+  'retentionDays', 'auditRetentionDays', ...booleanFields,
 ] as const);
 
 // These policies apply exclusively to invented fixture metadata. They document
@@ -34,7 +35,7 @@ function fictionalPolicy(id: string, changes: Partial<RegistryPolicy> = {}): Reg
     discoveryMetadata: true, licensedExcerpt: false, licensedFullText: false,
     media: false, internalAnalysis: false, publicRedistribution: false,
     aiSummarization: false, aiNarration: false, retentionDays: 1, deletionRequired: true,
-    quarantineMetadata: true, minimalAudit: true,
+    quarantineMetadata: true, minimalAudit: true, auditRetentionDays: 1,
     ...changes,
   };
 }
@@ -44,6 +45,7 @@ function fictionalPolicy(id: string, changes: Partial<RegistryPolicy> = {}): Reg
 const registry: readonly Readonly<RegistryPolicy>[] = Object.freeze([
   fictionalPolicy('fictional-metadata-v1'),
   fictionalPolicy('fictional-discard-v1', { quarantineMetadata: false }),
+  fictionalPolicy('fictional-no-audit-v1', { minimalAudit: false, auditRetentionDays: 0 }),
   fictionalPolicy('fictional-expired-v1', { expiresAt: '2026-01-02T00:00:00.000Z' }),
   fictionalPolicy('fictional-revoked-v1', { reviewStatus: 'REVOKED' }),
   fictionalPolicy('fictional-superseded-v1', { reviewStatus: 'SUPERSEDED' }),
@@ -70,6 +72,9 @@ function complete(policy: RegistryPolicy): boolean {
     && typeof policy.evidenceReference === 'string' && Boolean(policy.evidenceReference.trim())
     && Number.isSafeInteger(policy.retentionDays) && policy.retentionDays > 0
     && booleanFields.every(key => typeof policy[key] === 'boolean')
+    && Number.isSafeInteger(policy.auditRetentionDays)
+    && Number.isSafeInteger(policy.auditRetentionDays * 86400000)
+    && (policy.minimalAudit ? policy.auditRetentionDays > 0 : policy.auditRetentionDays === 0)
     && policy.discoveryMetadata;
 }
 

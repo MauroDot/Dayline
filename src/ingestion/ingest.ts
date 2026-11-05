@@ -24,6 +24,7 @@ function assertContext(context: IngestionContext): void {
   if (!context || typeof context !== 'object' || Object.keys(context).some(k => !['providerId','policyId'].includes(k)) || typeof context.providerId !== 'string' || typeof context.policyId !== 'string') throw Error('Registered provider and policy identifiers required; caller policies are forbidden');
 }
 function decide(state: State, input: ProviderArticle, context: IngestionContext, at: string, resolutions: ResolutionInput[]): keyof Counts {
+  if (state.retentionReviewRequired) { appendAudit(state, 'INGESTION_BLOCKED_REVIEW_REQUIRED', at); return 'rejected'; }
   const policy = getPolicy(context.providerId, context.policyId, at);
   let proposed = structuredClone(state);
   let subjectId: string | undefined;
@@ -51,7 +52,7 @@ function decide(state: State, input: ProviderArticle, context: IngestionContext,
     proposed = structuredClone(state);
     outcome = 'rejected';
   }
-  appendAudit(proposed, `INGESTION_${outcome.toUpperCase()}`, at, subjectId);
+  appendAudit(proposed, `INGESTION_${outcome.toUpperCase()}`, at, ['processed', 'quarantined'].includes(outcome) ? subjectId : undefined);
   Object.assign(state, proposed);
   return outcome;
 }
@@ -79,6 +80,7 @@ export async function ingestArticles(repository: JsonRepository, articles: Provi
 export async function resolveQuarantined(repository: JsonRepository, input: ResolutionInput, at = new Date().toISOString()): Promise<'resolved' | 'unresolved' | 'rejected'> {
   timestamp(at);
   return repository.transact(state => {
+    if (state.retentionReviewRequired) { appendAudit(state, 'PROVENANCE_BLOCKED_REVIEW_REQUIRED', at); return 'rejected'; }
     const record = state.quarantine.find(q => q.sourceId === input.sourceId);
     if (!record) throw Error('Unknown quarantined source');
     try {

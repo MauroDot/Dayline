@@ -17,6 +17,7 @@ test('registry resolves complete fictional metadata permissions with no real-pro
   assert.equal(policy.discoveryMetadata, true);
   assert.equal(policy.quarantineMetadata, true);
   assert.equal(policy.minimalAudit, true);
+  assert.equal(policy.auditRetentionDays, 1);
   for (const field of ['licensedExcerpt', 'licensedFullText', 'media', 'internalAnalysis',
     'publicRedistribution', 'aiSummarization', 'aiNarration'] as const) assert.equal(policy[field], false);
   assert.match(policy.evidenceReference, /^fictional-fixture-only:/);
@@ -31,6 +32,7 @@ test('registry returns independent copies and cannot be changed through returned
   assert.notEqual(first, second);
   first.publicRedistribution = true;
   first.retentionDays = 3650;
+  first.auditRetentionDays = 3650;
   first.providerId = 'gnews';
   assert.equal(policyStatus(first, now), 'UNKNOWN');
   assert.deepEqual(active(), second);
@@ -105,6 +107,38 @@ test('the discard fixture explicitly prohibits retaining quarantine metadata', (
   const discard = getPolicy(provider, 'fictional-discard-v1', now);
   assert.equal(discard.quarantineMetadata, false);
   assert.equal(discard.minimalAudit, true);
+  assert.equal(discard.auditRetentionDays, 1);
   assert.equal(discard.publicRedistribution, false);
   assert.equal(policyStatus(discard, now), 'ACTIVE');
+});
+
+test('audit retention is an explicit finite bounded grant that snapshots cannot extend', () => {
+  const policy = active();
+  assert.equal(policy.auditRetentionDays, 1);
+  assert.equal(Number.isSafeInteger(policy.auditRetentionDays * 86400000), true);
+  for (const auditRetentionDays of [0, -1, 0.5, 2, Number.NaN, Infinity, Number.MAX_SAFE_INTEGER]) {
+    assert.equal(policyStatus({ ...policy, auditRetentionDays }, now), 'UNKNOWN');
+  }
+  assert.equal(active().auditRetentionDays, 1);
+});
+
+test('the approved fictional no-audit fixture grants metadata retention without identifying audit retention', () => {
+  const policy = getPolicy(provider, 'fictional-no-audit-v1', now);
+  assert.equal(policy.reviewStatus, 'APPROVED');
+  assert.equal(policy.providerId, provider);
+  assert.equal(policy.quarantineMetadata, true);
+  assert.equal(policy.minimalAudit, false);
+  assert.equal(policy.auditRetentionDays, 0);
+  assert.equal(policy.publicRedistribution, false);
+  assert.equal(policyStatus(policy, now), 'ACTIVE');
+  assert.equal(policyStatus({ ...policy, auditRetentionDays: 1 }, now), 'UNKNOWN');
+  assert.equal(policyStatus({ ...policy, minimalAudit: true }, now), 'UNKNOWN');
+  assert.throws(() => getPolicy('gnews', policy.id, now), /registry policy/);
+});
+
+test('historical snapshots without an audit retention grant fail closed rather than inheriting new rights', () => {
+  const { auditRetentionDays: _, ...legacy } = active();
+  assert.equal(policyStatus(legacy as RegistryPolicy, now), 'UNKNOWN');
+  assert.equal(policyStatus({ ...active(), auditRetentionDays: undefined } as unknown as RegistryPolicy, now), 'UNKNOWN');
+  assert.equal(policyStatus(active(), now), 'ACTIVE');
 });

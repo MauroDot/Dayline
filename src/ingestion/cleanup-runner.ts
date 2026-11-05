@@ -16,7 +16,7 @@ async function main() {
     await ingestArticles(repo, articles, context, { dryRun: false, resolutions, clock: () => fixtureAt });
     const cleanupAt = new Date(Date.parse(fixtureAt) + 86400000).toISOString();
     const result = await cleanupRetention(repo, cleanupAt, dryRun);
-    console.log(JSON.stringify({ fictional: true, mode: dryRun ? 'dry-run' : 'temporary-fixture-cleanup', ...result }));
+    console.log(JSON.stringify({ fictional: true, mode: dryRun ? 'dry-run' : 'temporary-fixture-cleanup', ...result, retentionReviewRequired: (await repo.read()).retentionReviewRequired }));
   } finally { await rm(dir, { recursive: true, force: true }); }
 }
 main().catch(() => { console.error('Fictional retention cleanup failed'); process.exitCode = 1; });

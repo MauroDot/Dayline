@@ -337,7 +337,7 @@ test('concurrent independent repository instances commit one source and one outc
     assert.equal(state.audit.filter(row => row.action === 'INGESTION_DUPLICATE').length, attempts - 1);
     assert.equal(state.audit.filter(row => row.action === 'PROVENANCE_RESOLVED').length, 1);
     assert.equal(state.audit.length, attempts + 1);
-    assert.ok(state.audit.every(row => row.subjectId === sourceId(articles[0].url)));
+    assert.ok(state.audit.every(row => row.action === 'INGESTION_DUPLICATE' ? row.subjectId === undefined : row.subjectId === sourceId(articles[0].url)));
   });
 });
 

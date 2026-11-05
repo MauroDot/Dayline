@@ -23,4 +23,4 @@ export interface ManagedSource {
 export interface QuarantinedSource extends ManagedSource {
   metadata: Pick<ProviderArticle, 'url' | 'publisher' | 'publishedAt' | 'retrievedAt'>;
 }
-export interface DeletionMarker { sourceId: string; at: string; reason: string }
+export interface DeletionMarker { sourceId: string; at: string; reason: string; expiresAt?: string }

@@ -4,6 +4,7 @@ import { sourceId, retentionDeadline } from './metadata.ts';
 import { policyStatus } from './policies.ts';
 /** Legacy internal newsroom sources are preserved; imported sources must still be eligible. */
 export function eligibleSource(state: State, source: Source, at: string, visited = new Set<string>()): boolean {
+  if (state.retentionReviewRequired) return false;
   if (visited.has(source.id) || state.quarantine.some(q => q.sourceId === source.id) || state.deletions.some(d => d.sourceId === source.id)) return false;
   visited.add(source.id);
   if (state.deletions.some(d => d.sourceId === sourceId(source.url)) || state.quarantine.some(q => canonicalURL(q.providerMetadata.url) === source.canonicalUrl)) return false;

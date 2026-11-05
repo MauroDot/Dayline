@@ -36,6 +36,7 @@ export class Newsroom {
   async snapshot(): Promise<State> { return this.repository.read(); }
   async ingest(input: Omit<Source, 'canonicalUrl'>, actor: string): Promise<Source> {
     return this.repository.transact(state => {
+      if (state.retentionReviewRequired) throw Error('Retention policy review required before ingestion');
       const source: Source = { ...input, canonicalUrl: canonicalURL(input.url) }; validateSource(source);
       if (!new URL(source.url).hostname.endsWith('.test') || source.id.startsWith('url-') || source.rights !== 'fictional test fixture only') throw Error('Legacy fixture ingestion only; provider sources require registry workflow');
       if (state.quarantine.some(q => canonicalURL(q.providerMetadata.url) === source.canonicalUrl) || state.managedSources.some(m => canonicalURL(m.providerMetadata.url) === source.canonicalUrl) || state.deletions.some(d => d.sourceId === sourceId(source.url))) throw Error('Provider metadata cannot bypass registry or quarantine');
@@ -49,7 +50,7 @@ export class Newsroom {
     return new Set(ids.flatMap(id => { const source = state.sources.find(s => s.id === id); if (!source) throw Error('Unknown source'); return eligibleSource(state, source, this.clock()) ? [source.originId] : []; })).size;
   }
   async candidates(headline: string): Promise<string[]> {
-    const state = await this.snapshot(); const latest = new Map(state.revisions.map(s => [s.id, s]));
+    const state = await this.snapshot(); const latest = new Map(state.revisions.filter(s => !s.retentionRedacted).map(s => [s.id, s]));
     return similarityCandidates(headline, [...latest.values()]);
   }
   async create(story: Omit<Story, 'status' | 'version'>, actor: string): Promise<Story> {
@@ -62,6 +63,7 @@ export class Newsroom {
   async edit(id: string, patch: Partial<Pick<Story, 'headline' | 'summary' | 'topic' | 'geography' | 'eventAt' | 'clusterId' | 'evidence' | 'sourceIds'>>, actor: string): Promise<Story> {
     return this.repository.transact(state => {
       const prior = current(state, id);
+      if (prior.retentionRedacted) throw Error('Retention-redacted history cannot be edited');
       if (['PUBLISHED', 'REJECTED', 'ON_HOLD'].includes(prior.status)) throw Error('Story cannot be edited in this state');
       const allowed = ['headline', 'summary', 'topic', 'geography', 'eventAt', 'clusterId', 'evidence', 'sourceIds'];
       if (Object.keys(patch).some(key => !allowed.includes(key))) throw Error('Invalid edit field');
@@ -72,6 +74,8 @@ export class Newsroom {
   async transition(id: string, next: Status, actor: string): Promise<Story> {
     return this.repository.transact(state => {
       const prior = current(state, id); const reviewer = actorName(actor);
+      if (prior.retentionRedacted) throw Error('Retention-redacted history cannot transition');
+      if (state.retentionReviewRequired && ['APPROVED', 'PUBLISHED'].includes(next)) throw Error('Retention policy review required before approval or publication');
       if (['APPROVED', 'PUBLISHED'].includes(next) && prior.sourceIds.some(sourceId => { const source = state.sources.find(s => s.id === sourceId); return !source || !eligibleSource(state, source, this.clock()); })) throw Error('Ineligible source for editorial approval or publication');
       if (!transitions[prior.status].includes(next)) throw Error('Invalid editorial transition');
       if (next === 'CLUSTERED' && !prior.clusterId) throw Error('Cluster identifier required');
