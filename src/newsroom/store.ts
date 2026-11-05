@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, rm, open } from 'node:fs/promises';
 import { dirname, basename, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { emptyState, type State } from './model.ts';
+import { sectionIds } from '../editions/types.ts';
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): value is RecordValue => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -10,7 +11,7 @@ const stringArray = (value: unknown): boolean => Array.isArray(value) && value.e
 const nullableString = (value: unknown): boolean => value === null || typeof value === 'string';
 const positiveInteger = (value: unknown): boolean => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 const optionalRedaction = (row: RecordValue): boolean => !Object.hasOwn(row, 'retentionRedacted') || row.retentionRedacted === true;
-const rows = (value: unknown, valid: (row: RecordValue) => boolean): boolean => Array.isArray(value) && value.every(row => record(row) && valid(row));
+const rows = (value: unknown, valid: (row: RecordValue) => boolean): value is RecordValue[] => Array.isArray(value) && value.every(row => record(row) && valid(row));
 const verified = (value: unknown): boolean => typeof value === 'string' && ['UNVERIFIED', 'VERIFIED', 'DISPUTED'].includes(value);
 const source = (row: RecordValue): boolean => strings(row, ['id', 'publisher', 'url', 'canonicalUrl', 'type', 'publishedAt', 'retrievedAt', 'originId', 'rights']) && ['PRIMARY', 'ORIGINAL', 'SYNDICATED', 'SECONDARY'].includes(row.type as string) && verified(row.verification);
 const evidence = (row: RecordValue): boolean => strings(row, ['id', 'claim', 'uncertainty']) && verified(row.verification) && ['support', 'contradict', 'reviewerDecisions'].every(key => stringArray(row[key]));
@@ -49,23 +50,96 @@ function draft(row: RecordValue): boolean {
 }
 const draftReview = (row: RecordValue): boolean => strings(row, ['draftId', 'actorAssertion', 'at']) && positiveInteger(row.fromVersion) && positiveInteger(row.toVersion) && (row.storyVersion === null || positiveInteger(row.storyVersion)) && draftState(row.fromState) && draftState(row.toState) && row.unauthenticated === true;
 
+const exactKeys = (row: RecordValue, keys: readonly string[]): boolean => Object.keys(row).length === keys.length && keys.every(key => Object.hasOwn(row, key));
+const text = (value: unknown, max = 4096): value is string => typeof value === 'string' && Boolean(value.trim()) && value.length <= max;
+const uniqueStrings = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => text(item)) && new Set(value).size === value.length;
+function utcTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)) return false;
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return false;
+  return new Date(time).toISOString() === value.replace(/(?:\.(\d{1,3}))?Z$/, (_match, fraction: string | undefined) => `.${(fraction ?? '').padEnd(3, '0')}Z`);
+}
+function editionDate(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && utcTimestamp(value + 'T00:00:00Z');
+}
+function timezone(value: unknown): value is string {
+  if (!text(value, 128)) return false;
+  try { new Intl.DateTimeFormat('en', { timeZone: value }); return true; } catch { return false; }
+}
+const editionStates = ['ASSEMBLING', 'NEEDS_REVIEW', 'READY_FOR_APPROVAL', 'REVISION_REQUESTED', 'ON_HOLD', 'REJECTED', 'INVALIDATED'];
+const editionState = (value: unknown): boolean => typeof value === 'string' && editionStates.includes(value);
+function editionSource(row: RecordValue): boolean {
+  if (!exactKeys(row, ['sourceId', 'originId', 'publisher', 'url', 'providerId', 'policyId', 'policyVersion', 'snapshotDigest', 'expiresAt']) || !['sourceId', 'originId', 'publisher', 'providerId', 'policyId', 'snapshotDigest'].every(key => text(row[key])) || !positiveInteger(row.policyVersion) || !utcTimestamp(row.expiresAt) || !text(row.url)) return false;
+  try { const url = new URL(row.url); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password; } catch { return false; }
+}
+const editionEvidence = (row: RecordValue): boolean => exactKeys(row, ['id', 'support', 'contradict', 'uncertainty']) && text(row.id) && uniqueStrings(row.support) && row.support.length > 0 && uniqueStrings(row.contradict) && typeof row.uncertainty === 'string' && row.uncertainty.length <= 2048;
+function editionPlacement(row: RecordValue): boolean {
+  if (!exactKeys(row, ['storyId', 'storyVersion', 'headline', 'summary', 'featured', 'sources', 'evidence', 'independentSourceCount', 'expiresAt']) || !text(row.storyId) || !positiveInteger(row.storyVersion) || !text(row.headline, 512) || !text(row.summary, 4096) || typeof row.featured !== 'boolean' || !utcTimestamp(row.expiresAt) || !rows(row.sources, editionSource) || row.sources.length < 1 || row.sources.length > 64 || !rows(row.evidence, editionEvidence) || row.evidence.length < 1 || row.evidence.length > 16 || !positiveInteger(row.independentSourceCount)) return false;
+  const sources = row.sources as RecordValue[], evidence = row.evidence as RecordValue[];
+  const ids = new Set(sources.map(source => source.sourceId));
+  return ids.size === sources.length && new Set(evidence.map(item => item.id)).size === evidence.length && row.independentSourceCount === new Set(sources.map(source => source.originId)).size && evidence.every(item => [...item.support as string[], ...item.contradict as string[]].every(id => ids.has(id)));
+}
+const editionSection = (row: RecordValue): boolean => exactKeys(row, ['id', 'placements']) && typeof row.id === 'string' && (sectionIds as readonly string[]).includes(row.id) && rows(row.placements, editionPlacement);
+const editionSuggestion = (row: RecordValue): boolean => exactKeys(row, ['code', 'storyId', 'message']) && text(row.storyId) && text(row.message) && typeof row.code === 'string' && ['UNSUPPORTED_HEADLINE', 'MISLEADING_PROMINENCE', 'MISSING_ATTRIBUTION', 'MISSING_UNCERTAINTY', 'UNDISCLOSED_CONTRADICTIONS', 'SYNDICATED_REPETITION', 'HEADLINE_ARTICLE_CONFLICT', 'OPINION_AS_FACT'].includes(row.code);
+function edition(row: RecordValue): boolean {
+  const baseKeys = ['id', 'date', 'timezone', 'revision', 'createdAt', 'updatedAt', 'status'];
+  if (!text(row.id) || !editionDate(row.date) || !timezone(row.timezone) || !positiveInteger(row.revision) || !utcTimestamp(row.createdAt) || !utcTimestamp(row.updatedAt) || Date.parse(row.updatedAt) < Date.parse(row.createdAt)) return false;
+  if (row.status === 'INVALIDATED') return exactKeys(row, [...baseKeys, 'reason']) && row.reason === 'STALE_OR_INELIGIBLE';
+  if (!exactKeys(row, [...baseKeys, 'sections', 'suggestions']) || !editionState(row.status) || !rows(row.sections, editionSection) || row.sections.length !== sectionIds.length || !rows(row.suggestions, editionSuggestion)) return false;
+  const sections = row.sections as RecordValue[];
+  if (!sections.every((section, index) => section.id === sectionIds[index])) return false;
+  const ids = new Set<string>();
+  let featured = 0;
+  for (const section of sections) {
+    for (const placement of section.placements as RecordValue[]) {
+      if (ids.has(placement.storyId as string)) return false;
+      ids.add(placement.storyId as string);
+      if (placement.featured && (section.id !== 'TOP_STORIES' || ++featured > 1)) return false;
+    }
+  }
+  return (row.suggestions as RecordValue[]).every(suggestion => ids.has(suggestion.storyId as string));
+}
+const editionReview = (row: RecordValue): boolean => exactKeys(row, ['editionId', 'fromRevision', 'toRevision', 'fromState', 'toState', 'actorAssertion', 'unauthenticated', 'at']) && text(row.editionId) && positiveInteger(row.fromRevision) && positiveInteger(row.toRevision) && editionState(row.fromState) && editionState(row.toState) && text(row.actorAssertion) && row.unauthenticated === true && utcTimestamp(row.at);
+function editionHistory(editions: RecordValue[], reviews: RecordValue[]): boolean {
+  const latest = new Map<string, number>(), revisions = new Map<string, Set<number>>();
+  for (const row of editions) {
+    const id = row.id as string, revision = row.revision as number;
+    if (revision <= (latest.get(id) ?? 0)) return false;
+    latest.set(id, revision);
+    if (!revisions.has(id)) revisions.set(id, new Set());
+    revisions.get(id)!.add(revision);
+  }
+  return reviews.every(review => (review.toRevision as number) > (review.fromRevision as number)
+    && revisions.get(review.editionId as string)?.has(review.fromRevision as number)
+    && revisions.get(review.editionId as string)?.has(review.toRevision as number));
+}
+
+function orderedJSON(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(orderedJSON);
+  if (record(value)) return Object.fromEntries(Object.keys(value).sort().map(key => [key, orderedJSON(value[key])]));
+  return value;
+}
+
 function stateFromJSON(value: unknown): State {
   if (!record(value) || !baseArrays(value)) throw Error('Invalid repository format');
-  if (value.schema !== 4 && ['drafts', 'draftReviews'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
+  if (value.schema !== 5 && ['editions', 'editionReviews'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
+  if (![4, 5].includes(value.schema as number) && ['drafts', 'draftReviews'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
   if (value.schema === 1) {
     if (['managedSources', 'quarantine', 'provenanceDecisions', 'deletions', 'retentionReviewRequired'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
     // Legacy assertions remain history, never an implicit rights or provenance approval.
     return { ...emptyState(), retentionReviewRequired: true, sources: value.sources, revisions: value.revisions, approvals: value.approvals, audit: value.audit } as State;
   }
-  if (![2, 3, 4].includes(value.schema as number) || !rows(value.managedSources, managedSource) || !rows(value.quarantine, quarantinedSource) || !rows(value.provenanceDecisions, provenanceDecision) || !rows(value.deletions, deletion)) throw Error('Invalid repository format');
+  if (![2, 3, 4, 5].includes(value.schema as number) || !rows(value.managedSources, managedSource) || !rows(value.quarantine, quarantinedSource) || !rows(value.provenanceDecisions, provenanceDecision) || !rows(value.deletions, deletion)) throw Error('Invalid repository format');
   if (value.schema === 2) {
     if (Object.hasOwn(value, 'retentionReviewRequired')) throw Error('Invalid repository format');
     // Earlier deletion may have erased all linkage; require an explicit retention review.
-    return { ...value, schema: 4, retentionReviewRequired: true, drafts: [], draftReviews: [] } as unknown as State;
+    return { ...value, schema: 5, retentionReviewRequired: true, drafts: [], draftReviews: [], editions: [], editionReviews: [] } as unknown as State;
   }
   if (typeof value.retentionReviewRequired !== 'boolean') throw Error('Invalid repository format');
-  if (value.schema === 3) return { ...value, schema: 4, drafts: [], draftReviews: [] } as unknown as State;
+  if (value.schema === 3) return { ...value, schema: 5, drafts: [], draftReviews: [], editions: [], editionReviews: [] } as unknown as State;
   if (!rows(value.drafts, draft) || !rows(value.draftReviews, draftReview)) throw Error('Invalid repository format');
+  if (value.schema === 4) return { ...value, schema: 5, editions: [], editionReviews: [] } as unknown as State;
+  if (!rows(value.editions, edition) || !rows(value.editionReviews, editionReview) || !editionHistory(value.editions, value.editionReviews)) throw Error('Invalid repository format');
   return value as unknown as State;
 }
 
@@ -102,9 +176,11 @@ export class JsonRepository {
       const result = change(state);
       // A result that cannot be returned must fail before any data is committed.
       const clonedResult = structuredClone(result);
-      if (state.schema !== 4) throw Error('Invalid repository format');
+      if (state.schema !== 5) throw Error('Invalid repository format');
       stateFromJSON(state);
-      const serialized = JSON.stringify(state);
+      const serialized = JSON.stringify(orderedJSON(state));
+      // Validate the actual JSON representation as well as the in-memory state.
+      stateFromJSON(JSON.parse(serialized));
       const file = await open(temp, 'wx', 0o600);
       try { await file.writeFile(serialized); await file.sync(); } finally { await file.close(); }
       this.beforeCommit?.();

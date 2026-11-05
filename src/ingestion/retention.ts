@@ -3,6 +3,7 @@ import type { JsonRepository } from '../newsroom/store.ts';
 import type { State } from '../newsroom/model.ts';
 import type { ManagedSource } from './records.ts';
 import { invalidateDrafts } from '../editorial/lifecycle.ts';
+import { invalidateEditions } from '../editions/lifecycle.ts';
 import { redactEditorialHistory } from './history.ts';
 import { policyStatus } from './policies.ts';
 
@@ -131,6 +132,7 @@ export async function cleanupRetention(repository: JsonRepository, at: string, d
       state.deletions.push({ sourceId: subjectId, at, reason: candidate.reason, expiresAt: new Date(expires).toISOString() });
     }
     invalidateDrafts(state, at);
+    invalidateEditions(state, at);
     return { candidates: selected.size, deleted: selected.size };
   });
 }
