@@ -1,6 +1,6 @@
 # Dayline — Development retention policy
 
-This document describes the local DL-003B-R2 prototype. It is not a provider license, production deletion guarantee or legal determination. Only fictional `.test` metadata is permitted by the current registry. Real feeds, production publishing and paid services remain blocked.
+This document describes the local retention controls introduced by DL-003B-R2 and extended to editorial proposals by DL-003C. It is not a provider license, production deletion guarantee or legal determination. Only fictional `.test` metadata is permitted by the current registry. Real feeds, production publishing and paid services remain blocked.
 
 ## Confirmed R1 gaps and existing safeguards
 
@@ -22,6 +22,7 @@ Audit permission is separate from metadata permission. A policy allowing minimal
 | Expired, invalid or deadline-less markers | Purge the marker and linked audit identity on cleanup. Do not renew its deadline or infer a new audit grant. |
 | Identifying audit orphans | Replace events whose source identity has no governing managed metadata, quarantine or unexpired marker with non-identifying procedural stubs, and require retention review. |
 | Affected editorial history | Replace every version and linked approval/audit details with the procedural stubs described below. |
+| Generated editorial proposals | Invalidate ineligible proposals, remove their payload and source/story/policy links, and redact linked review actor assertions. |
 | Unrelated lawful history | Leave unchanged by this cleanup. |
 
 The first permitted marker deadline is calculated from cleanup time plus the captured audit period. Repeated cleanup does not extend an existing deadline. If no audit retention is permitted, no identifying deletion marker is retained.
@@ -30,11 +31,11 @@ Rejected and duplicate ingestion attempts keep per-attempt counts and atomic out
 
 ## Repository retention-review hold
 
-Applying metadata deletion sets schema-3 `retentionReviewRequired` to true. Prior deletion markers, identifying audit orphans or redaction of orphan historical references also require the hold. This repository-wide boolean contains no source ID, URL, digest, publisher or reviewer identity. It remains after finite markers disappear and blocks all provider ingestion, legacy fixture ingestion, provenance resolution and new approval/publication. Sources cannot count as eligible evidence while the repository is held.
+Applying metadata deletion sets schema-4 `retentionReviewRequired` to true. Prior deletion markers, identifying audit orphans or redaction of orphan historical references also require the hold. This repository-wide boolean contains no source ID, URL, digest, publisher or reviewer identity. It remains after finite markers disappear and blocks all provider ingestion, legacy fixture ingestion, provenance resolution, proposal generation/use and new approval/publication. Sources cannot count as eligible evidence while the repository is held.
 
 There is no application API, CLI flag or automated policy upgrade that clears the hold. A separately designed human and legal review process is required before resuming a repository with deletion history. Changing the file or using a fresh repository is not a reviewed recovery or rights procedure; the prototype cannot enforce deletion history across those boundaries.
 
-A new empty schema-3 repository starts without the hold. Reading schema 1 or 2 converts its state to schema 3 in memory with the hold true because earlier deletion history cannot be proved complete. Reading alone does not rewrite the file; the next successful transaction persists schema 3. Migration preserves records for inspection rather than retroactively approving their rights. Cleanup can then redact orphan source references left by earlier cleanup even when no managed metadata candidate remains.
+A new empty schema-4 repository starts without the hold. Reading schema 1 or 2 converts its state to schema 4 in memory with the hold true because earlier deletion history cannot be proved complete; schema 3 preserves its existing hold value. Empty proposal/review collections are added. Reading alone does not rewrite the file; the next successful transaction persists schema 4. Migration preserves records for inspection rather than retroactively approving their rights. Cleanup can then redact orphan source references left by earlier cleanup even when no managed metadata candidate remains.
 
 ## Editorial history redaction
 
@@ -43,6 +44,10 @@ Any reference to a removed source in any story version marks the whole story as 
 Cleanup rebuilds affected revisions from an explicit field whitelist. It removes the original story identity, headline, topic, summary, geography, event time, cluster, claims, evidence, source IDs and additional copied fields. A fresh random story ID consistently links that story's versions and minimized approvals/audits; no old-to-new map or source-derived story digest is retained. Version numbers, statuses, redaction flags, placeholder text and permitted procedural timing/event information remain. Linked reviewer and audit actor labels are replaced, and audit event IDs are regenerated. Only minimized procedural history is preserved; the stubs do not preserve source-linked licensed prose or original asserted identities.
 
 Redacted stories cannot be edited, transitioned, approved or published, including through the correction-to-draft path. Their procedural approval records do not authorize reuse. Ordinary editorial work on unrelated records remains subject to the repository-wide approval/publication hold.
+
+## Generated proposal retention
+
+Editorial proposals expire no later than their captured source-retention and policy deadlines. Story edits/transitions, service snapshots/reviews and applied retention cleanup recheck their eligibility. Invalidation removes generated text, source/story links, policy references and other payload; only the proposal ID, invalidated state/time and generic reason remain. Related review records retain procedural versions/states and a safe timestamp, with story revision cleared and actor assertions replaced by a placeholder. No raw prompt or rejected model output is stored. The [AI editorial design](AI_EDITORIAL_DESIGN.md) describes the fictional-only rights and review boundary. These local checks have no background expiry scheduler and do not erase external copies.
 
 ## Manual fixture commands
 

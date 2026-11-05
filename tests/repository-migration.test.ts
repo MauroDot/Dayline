@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { JsonRepository } from '../src/newsroom/store.ts';
 import { emptyState, type State, type Source } from '../src/newsroom/model.ts';
 import { getPolicy, policyStatus } from '../src/ingestion/policies.ts';
+import type { ActiveDraft, DraftReview } from '../src/editorial/types.ts';
 
 const at = '2026-01-02T00:00:00.000Z';
 const source = (id: string): Source => ({ id, publisher: 'Fictional publisher', url: `https://example.test/${id}`, canonicalUrl: `https://example.test/${id}`, type: 'ORIGINAL', publishedAt: at, retrievedAt: at, originId: id, rights: 'Legacy fixture assertion; not a license', verification: 'VERIFIED' });
@@ -35,6 +36,18 @@ function schema2Fixture() {
     deletions: [{ sourceId: 'previously-deleted', at, reason: 'Legacy deletion without an expiry' }]
   };
 }
+function activeDraftFixture(): ActiveDraft {
+  return {
+    id: 'draft', storyId: 'story', storyVersion: 1, version: 1, status: 'GENERATED',
+    generatedAt: at, expiresAt: '2026-01-03T00:00:00.000Z', providerId: 'fictional-provider', modelVersion: 'fictional-model-v1', promptTemplateVersion: 'dayline-editorial-v1',
+    sourceIds: ['legacy'], policies: [{ sourceId: 'legacy', providerId: 'fictional-fixture', policyId: 'fictional-policy', policyVersion: 1, snapshotDigest: 'fictional-digest' }],
+    output: { headline: 'Fictional draft headline', summary: 'Fictional draft summary', sections: [{ kind: 'FACT', text: 'Fictional claim', evidenceIds: ['claim'] }], claims: [{ evidenceId: 'claim', text: 'Fictional claim', supportingSourceIds: ['legacy'], contradictingSourceIds: [] }], uncertainties: ['Fixture only'] },
+    suggestions: [{ code: 'MISSING_UNCERTAINTY', message: 'Fictional advisory suggestion' }], usage: { inputTokens: 0, outputTokens: 0, estimatedCostMicros: 0 }
+  };
+}
+function draftReviewFixture(): DraftReview {
+  return { draftId: 'draft', fromVersion: 1, toVersion: 2, storyVersion: 1, fromState: 'GENERATED', toState: 'NEEDS_REVIEW', actorAssertion: 'fictional-reviewer', unauthenticated: true, at };
+}
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), 'dayline-repository-'));
   const file = join(dir, 'repository.json');
@@ -54,10 +67,10 @@ test('legacy reads preserve historical snapshots without rewriting or granting n
     await writeFile(f.file, bytes);
     const repo = new JsonRepository(f.file);
     const migrated = await repo.read();
-    assert.equal(migrated.schema, 3);
+    assert.equal(migrated.schema, 4);
     assert.equal(migrated.retentionReviewRequired, true);
     for (const key of ['sources', 'revisions', 'approvals', 'audit'] as const) assert.deepEqual(migrated[key], legacy[key]);
-    for (const key of ['managedSources', 'quarantine', 'provenanceDecisions', 'deletions'] as const) assert.deepEqual(migrated[key], []);
+    for (const key of ['managedSources', 'quarantine', 'provenanceDecisions', 'deletions', 'drafts', 'draftReviews'] as const) assert.deepEqual(migrated[key], []);
     assert.equal(await readFile(f.file, 'utf8'), bytes);
     migrated.sources[0].rights = 'changed by caller';
     assert.deepEqual((await repo.read()).sources, legacy.sources);
@@ -68,7 +81,7 @@ test('schema-1 files containing later authority fields are rejected without sile
   const f = await fixture();
   try {
     const repo = new JsonRepository(f.file);
-    for (const key of ['managedSources', 'quarantine', 'provenanceDecisions', 'deletions', 'retentionReviewRequired']) {
+    for (const key of ['managedSources', 'quarantine', 'provenanceDecisions', 'deletions', 'retentionReviewRequired', 'drafts', 'draftReviews']) {
       for (const value of [[], [{ sourceId: 'legacy', publicRedistribution: true }]]) {
         const bytes = JSON.stringify({ ...legacyFixture(), [key]: value }, null, 2) + '\n';
         await writeFile(f.file, bytes);
@@ -83,7 +96,7 @@ test('schema-1 files containing later authority fields are rejected without sile
   } finally { await f.cleanup(); }
 });
 
-test('the next successful legacy transaction persists schema 3 and preserves old records exactly', async () => {
+test('the next successful legacy transaction persists schema 4 and preserves old records exactly', async () => {
   const f = await fixture();
   try {
     const legacy = legacyFixture();
@@ -91,13 +104,13 @@ test('the next successful legacy transaction persists schema 3 and preserves old
     const repo = new JsonRepository(f.file);
     assert.equal(await repo.transact(appendSourceAndAudit), 'new-source');
     const saved = JSON.parse(await readFile(f.file, 'utf8'));
-    assert.equal(saved.schema, 3);
+    assert.equal(saved.schema, 4);
     assert.equal(saved.retentionReviewRequired, true);
     assert.deepEqual(saved.sources.slice(0, legacy.sources.length), legacy.sources);
     assert.deepEqual(saved.revisions, legacy.revisions);
     assert.deepEqual(saved.approvals, legacy.approvals);
     assert.deepEqual(saved.audit.slice(0, legacy.audit.length), legacy.audit);
-    for (const key of ['managedSources', 'quarantine', 'provenanceDecisions', 'deletions'] as const) assert.deepEqual(saved[key], []);
+    for (const key of ['managedSources', 'quarantine', 'provenanceDecisions', 'deletions', 'drafts', 'draftReviews'] as const) assert.deepEqual(saved[key], []);
     assert.deepEqual(await repo.read(), saved);
   } finally { await f.cleanup(); }
 });
@@ -110,11 +123,13 @@ test('schema-2 migration requires retention review and preserves history without
     await writeFile(f.file, bytes);
     const repo = new JsonRepository(f.file);
     const migrated = await repo.read();
-    assert.equal(migrated.schema, 3);
+    assert.equal(migrated.schema, 4);
     assert.equal(migrated.retentionReviewRequired, true);
     for (const key of ['sources', 'revisions', 'approvals', 'audit', 'managedSources', 'quarantine', 'provenanceDecisions', 'deletions'] as const) assert.deepEqual(migrated[key], legacy[key]);
     assert.equal(Object.hasOwn(migrated.managedSources[0].policy, 'auditRetentionDays'), false);
     assert.equal(Object.hasOwn(migrated.deletions[0], 'expiresAt'), false);
+    assert.deepEqual(migrated.drafts, []);
+    assert.deepEqual(migrated.draftReviews, []);
     assert.equal(policyStatus(migrated.managedSources[0].policy, at), 'UNKNOWN');
     assert.equal(await readFile(f.file, 'utf8'), bytes);
     await repo.transact(() => undefined);
@@ -147,6 +162,109 @@ test('schema-2 files reject supplied review flags and incomplete authority array
   } finally { await f.cleanup(); }
 });
 
+test('schema-3 migration preserves retention decisions and all history without granting draft or AI rights', async () => {
+  const f = await fixture();
+  try {
+    const repo = new JsonRepository(f.file);
+    for (const retentionReviewRequired of [false, true]) {
+      const legacy = { ...schema2Fixture(), schema: 3, retentionReviewRequired };
+      const bytes = JSON.stringify(legacy, null, 2) + '\n';
+      await writeFile(f.file, bytes);
+      const migrated = await repo.read();
+      assert.deepEqual(migrated, { ...legacy, schema: 4, drafts: [], draftReviews: [] });
+      assert.equal(migrated.retentionReviewRequired, retentionReviewRequired);
+      assert.equal(migrated.managedSources[0].policy.aiSummarization, false);
+      assert.equal(migrated.managedSources[0].policy.aiNarration, false);
+      assert.equal(Object.hasOwn(migrated.managedSources[0].policy, 'auditRetentionDays'), false);
+      assert.equal(await readFile(f.file, 'utf8'), bytes);
+      await repo.transact(() => undefined);
+      assert.deepEqual(JSON.parse(await readFile(f.file, 'utf8')), migrated);
+      assert.deepEqual(await repo.read(), migrated);
+    }
+  } finally { await f.cleanup(); }
+});
+
+test('pre-draft schemas reject draft fields instead of silently discarding proposed content or reviews', async () => {
+  const f = await fixture();
+  try {
+    const repo = new JsonRepository(f.file);
+    for (const legacy of [legacyFixture(), schema2Fixture(), { ...schema2Fixture(), schema: 3, retentionReviewRequired: false }]) {
+      for (const key of ['drafts', 'draftReviews']) {
+        for (const value of [[], [activeDraftFixture()], [draftReviewFixture()]]) {
+          const bytes = JSON.stringify({ ...legacy, [key]: value });
+          await writeFile(f.file, bytes);
+          await assert.rejects(repo.read(), /Invalid repository format/);
+          await assert.rejects(repo.transact(() => undefined), /Invalid repository format/);
+          assert.equal(await readFile(f.file, 'utf8'), bytes);
+          assert.deepEqual(await readdir(f.dir), ['repository.json']);
+        }
+      }
+    }
+  } finally { await f.cleanup(); }
+});
+
+test('schema 4 roundtrips typed draft records and rejects malformed active payloads or review identities', async () => {
+  const f = await fixture();
+  try {
+    const repo = new JsonRepository(f.file);
+    const valid = activeDraftFixture();
+    const review = draftReviewFixture();
+    const state: State = { ...emptyState(), drafts: [valid], draftReviews: [review, { ...review, storyVersion: null, fromState: 'ON_HOLD', toState: 'INVALIDATED' }] };
+    const bytes = JSON.stringify(state, null, 2) + '\n';
+    await writeFile(f.file, bytes);
+    assert.deepEqual(await repo.read(), state);
+    assert.equal(await readFile(f.file, 'utf8'), bytes);
+    await repo.transact(() => undefined);
+    assert.deepEqual(await repo.read(), state);
+    const invalidDrafts: unknown[] = [
+      { id: 'draft', status: 'GENERATED' }, { ...valid, status: 'PUBLISHED' }, { ...valid, storyVersion: 0 }, { ...valid, version: 1.5 }, { ...valid, promptTemplateVersion: 'unrecognized-template' },
+      { ...valid, output: undefined }, { ...valid, output: { headline: 'Missing body' } },
+      { ...valid, output: { ...valid.output, sections: [{ ...valid.output.sections[0], kind: 'PROMOTION' }] } },
+      { ...valid, output: { ...valid.output, claims: [{ ...valid.output.claims[0], supportingSourceIds: null }] } },
+      { ...valid, output: { ...valid.output, uncertainties: [true] } },
+      { ...valid, policies: [{ ...valid.policies[0], snapshotDigest: undefined }] }, { ...valid, policies: [{ ...valid.policies[0], policyVersion: 0 }] },
+      { ...valid, sourceIds: [3] }, { ...valid, suggestions: [{ code: 'UNKNOWN', message: 'Unknown suggestion' }] },
+      { ...valid, usage: undefined }, { ...valid, usage: { ...valid.usage, inputTokens: -1 } }, { ...valid, usage: { ...valid.usage, estimatedCostMicros: 0.5 } }
+    ];
+    const invalidReviews: unknown[] = [
+      { ...review, unauthenticated: false }, { ...review, unauthenticated: undefined }, { ...review, actorAssertion: undefined },
+      { ...review, fromVersion: 0 }, { ...review, toVersion: 1.5 }, { ...review, storyVersion: '1' }, { ...review, storyVersion: -1 },
+      { ...review, fromState: 'PUBLISHED' }, { ...review, toState: undefined }
+    ];
+    for (const malformed of [...invalidDrafts.map(row => ({ ...emptyState(), drafts: [row] })), ...invalidReviews.map(row => ({ ...emptyState(), draftReviews: [row] }))]) {
+      const badBytes = JSON.stringify(malformed);
+      await writeFile(f.file, badBytes);
+      await assert.rejects(repo.read(), /Invalid repository format/);
+      await assert.rejects(repo.transact(() => undefined), /Invalid repository format/);
+      assert.equal(await readFile(f.file, 'utf8'), badBytes);
+    }
+  } finally { await f.cleanup(); }
+});
+
+test('invalidated drafts retain only their minimal marker and reject every extra payload or linkage field', async () => {
+  const f = await fixture();
+  try {
+    const repo = new JsonRepository(f.file);
+    const marker = { id: 'invalidated-draft', status: 'INVALIDATED', invalidatedAt: at, reason: 'STALE_OR_INELIGIBLE' };
+    const state = { ...emptyState(), drafts: [marker] };
+    await writeFile(f.file, JSON.stringify(state));
+    assert.deepEqual(await repo.read(), state);
+    await repo.transact(() => undefined);
+    assert.deepEqual(await repo.read(), state);
+    const invalid: unknown[] = [{ ...marker, reason: 'UNRECOGNIZED' }, { ...marker, invalidatedAt: undefined }];
+    for (const [key, value] of Object.entries(activeDraftFixture()).filter(([key]) => !['id', 'status'].includes(key))) invalid.push({ ...marker, [key]: value });
+    invalid.push({ ...marker, unexpectedLicensedText: 'Fictional content must not survive invalidation' });
+    for (const row of invalid) {
+      const bytes = JSON.stringify({ ...emptyState(), drafts: [row] });
+      await writeFile(f.file, bytes);
+      await assert.rejects(repo.read(), /Invalid repository format/);
+      await assert.rejects(repo.transact(() => undefined), /Invalid repository format/);
+      assert.equal(await readFile(f.file, 'utf8'), bytes);
+      assert.deepEqual(await readdir(f.dir), ['repository.json']);
+    }
+  } finally { await f.cleanup(); }
+});
+
 test('schema 3 requires its review flag and preserves only explicit true historical redaction markers', async () => {
   const f = await fixture();
   try {
@@ -154,10 +272,13 @@ test('schema 3 requires its review flag and preserves only explicit true histori
     const repo = new JsonRepository(f.file);
     for (const retentionReviewRequired of [false, true]) {
       const state = { ...legacy, schema: 3, retentionReviewRequired, managedSources: [], quarantine: [], provenanceDecisions: [], deletions: [], revisions: legacy.revisions.map(row => ({ ...row, retentionRedacted: true })), approvals: legacy.approvals.map(row => ({ ...row, retentionRedacted: true })) };
-      await writeFile(f.file, JSON.stringify(state));
-      assert.deepEqual(await repo.read(), state);
+      const bytes = JSON.stringify(state);
+      const migrated = { ...state, schema: 4, drafts: [], draftReviews: [] };
+      await writeFile(f.file, bytes);
+      assert.deepEqual(await repo.read(), migrated);
+      assert.equal(await readFile(f.file, 'utf8'), bytes);
       await repo.transact(() => undefined);
-      assert.deepEqual(await repo.read(), state);
+      assert.deepEqual(await repo.read(), migrated);
     }
     const missingFlag: Record<string, unknown> = { ...emptyState() }; delete missingFlag.retentionReviewRequired;
     const invalid: unknown[] = [missingFlag, ...[null, 'false', 0, []].map(retentionReviewRequired => ({ ...emptyState(), retentionReviewRequired }))];
@@ -174,7 +295,7 @@ test('schema 3 requires its review flag and preserves only explicit true histori
   } finally { await f.cleanup(); }
 });
 
-test('schema-3 snapshots retain captured restrictions, quarantine, provenance and deletion history unchanged', async () => {
+test('schema-4 snapshots retain captured restrictions, quarantine, provenance and deletion history unchanged', async () => {
   const f = await fixture();
   try {
     const state: State = emptyState();
@@ -206,7 +327,7 @@ test('unsupported, corrupt and incomplete repository formats fail closed without
   const f = await fixture();
   try {
     const repo = new JsonRepository(f.file);
-    const invalid: unknown[] = [null, [], {}, { ...emptyState(), schema: 0 }, { ...emptyState(), schema: 4 }, { ...emptyState(), schema: '3' }, { ...emptyState(), retentionReviewRequired: 'false' }, { ...emptyState(), sources: [{}] }, { ...emptyState(), audit: [null] }, { ...emptyState(), managedSources: [{ sourceId: 'legacy' }] }, { ...emptyState(), provenanceDecisions: [{ sourceId: 'legacy' }] }, { ...emptyState(), deletions: [{ sourceId: 'deleted', at, reason: 'Fixture expiry', expiresAt: 3 }] }];
+    const invalid: unknown[] = [null, [], {}, { ...emptyState(), schema: 0 }, { ...emptyState(), schema: 5 }, { ...emptyState(), schema: '4' }, { ...emptyState(), retentionReviewRequired: 'false' }, { ...emptyState(), sources: [{}] }, { ...emptyState(), audit: [null] }, { ...emptyState(), managedSources: [{ sourceId: 'legacy' }] }, { ...emptyState(), provenanceDecisions: [{ sourceId: 'legacy' }] }, { ...emptyState(), deletions: [{ sourceId: 'deleted', at, reason: 'Fixture expiry', expiresAt: 3 }] }];
     for (const key of Object.keys(emptyState()).filter(key => key !== 'schema' && key !== 'retentionReviewRequired')) {
       const missing: Record<string, unknown> = { ...emptyState() }; delete missing[key];
       invalid.push(missing, { ...emptyState(), [key]: {} }, { ...emptyState(), [key]: [null] }, { ...emptyState(), [key]: [{}] });
@@ -239,7 +360,7 @@ test('an injected failure after synced staging preserves the old repository and 
       const temps = readdirSync(f.dir).filter(name => name.endsWith('.tmp'));
       assert.equal(temps.length, 1);
       const staged = JSON.parse(readFileSync(join(f.dir, temps[0]), 'utf8'));
-      assert.equal(staged.schema, 3);
+      assert.equal(staged.schema, 4);
       assert.equal(staged.retentionReviewRequired, true);
       assert.ok(staged.sources.some((entry: Source) => entry.id === 'new-source'));
       assert.ok(staged.audit.some((entry: { id: string }) => entry.id === 'new-audit'));
@@ -275,7 +396,7 @@ test('an uncloneable transaction result fails before staging or committing its m
   } finally { await f.cleanup(); }
 });
 
-test('new repositories use schema 3 and failed changes cannot leave partial state', async () => {
+test('new repositories use schema 4 and failed changes cannot leave partial state', async () => {
   const f = await fixture();
   try {
     const repo = new JsonRepository(f.file);

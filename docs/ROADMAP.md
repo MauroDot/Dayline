@@ -50,10 +50,14 @@
 - [x] R2 validation executed on Node 22.16.0: TypeScript and 134/134 backend/domain tests passed; Chromium 7/7 passed. See [R2 validation report](DL-003B-R2_VALIDATION.md).
 - [ ] Design a legally reviewed release-from-hold process and deletion enforcement across production copies before real-provider use.
 
-## DL-003C — News rights, editorial review and publication
-- [ ] Select permitted content feeds and negotiate needed usage rights.
-- [ ] Deduplicate story clusters while retaining originating-report provenance.
-- [ ] Evidence-linked drafts, human holds, corrections and full audit trail.
+## DL-003C — AI-assisted editorial workflow
+- [x] Provider-independent model contract and deterministic mock with local resource/cost limits; no real API calls.
+- [x] Strict extractive, evidence-linked proposals with contradiction/uncertainty preservation and advisory language flags.
+- [x] Revision-specific, explicitly unauthenticated draft review states; no automatic newsroom approval or publication.
+- [x] Explicit fictional AI rights, source/policy expiry checks and invalidation integrated with story changes and retention cleanup.
+- [x] DL-003C validation executed on Node 22.16.0: TypeScript and 204/204 backend/domain tests passed; Chromium 7/7 passed. See [validation report](DL-003C_VALIDATION.md).
+- [ ] Select real permitted feeds and approve contracts, including AI/derived-content and retention rights.
+- [ ] Implement authenticated production reviewers, authorization, durable transactions and approved publication operations.
 
 ## DL-004 — Scheduled editions
 - [ ] Versioned 06:00 America/Chicago edition, explicit review gate, monitoring and retries.

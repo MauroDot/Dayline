@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { canonicalURL, validateSource, validateEvidence, similarityCandidates, type Source, type Story, type Status, type State, type Audit } from './model.ts';
 import { JsonRepository } from './store.ts';
 import { sourceId } from '../ingestion/metadata.ts';
+import { invalidateDrafts } from '../editorial/lifecycle.ts';
 import { eligibleSource } from '../ingestion/eligibility.ts';
 
 const transitions: Record<Status, Status[]> = {
@@ -68,7 +69,7 @@ export class Newsroom {
       const allowed = ['headline', 'summary', 'topic', 'geography', 'eventAt', 'clusterId', 'evidence', 'sourceIds'];
       if (Object.keys(patch).some(key => !allowed.includes(key))) throw Error('Invalid edit field');
       const revision: Story = { ...prior, ...structuredClone(patch), status: ['APPROVED', 'NEEDS_REVIEW', 'CORRECTION_REQUIRED'].includes(prior.status) ? 'DRAFT' : prior.status, version: prior.version + 1, updatedAt: now() };
-      checkStory(revision, state); state.revisions.push(revision); audit(state, 'STORY_EDITED', actor, revision); return revision;
+      checkStory(revision, state); state.revisions.push(revision); invalidateDrafts(state, this.clock()); audit(state, 'STORY_EDITED', actor, revision); return revision;
     });
   }
   async transition(id: string, next: Status, actor: string): Promise<Story> {
@@ -84,7 +85,7 @@ export class Newsroom {
       const revision: Story = { ...prior, status: next, version: prior.version + 1, updatedAt: now() };
       state.revisions.push(revision);
       if (next === 'APPROVED') state.approvals.push({ storyId: id, version: revision.version, reviewer, at: now() });
-      audit(state, `STATUS_${next}`, reviewer, revision); return revision;
+      invalidateDrafts(state, this.clock()); audit(state, `STATUS_${next}`, reviewer, revision); return revision;
     });
   }
 }
