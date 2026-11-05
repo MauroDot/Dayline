@@ -11,7 +11,8 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "check": "npm run typecheck && node --check public/app.js && node --check public/stories.js && npm test",
     "typecheck": "tsc --noEmit",
-    "ingest:fixture": "node --experimental-strip-types src/ingestion/runner.ts"
+    "ingest:fixture": "node --experimental-strip-types src/ingestion/runner.ts",
+    "retention:fixture": "node --experimental-strip-types src/ingestion/cleanup-runner.ts"
   },
   "devDependencies": {
     "@types/node": "22.19.15",

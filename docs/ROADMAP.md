@@ -32,6 +32,24 @@
 - [ ] Validate provider terms, provenance, retention and deletion before real data access.
 - [ ] Secure authentication, durable storage and licensed publication remain blocked.
 
+## DL-003B-R1 — Rights, provenance and retention hardening
+- [x] Central, versioned fictional-only policy registry; deny caller permission overrides and all real providers.
+- [x] Metadata quarantine and explicit provenance decisions; preserve captured rights and retention deadlines.
+- [x] Atomic per-item ingestion outcomes, snapshot-only dry runs and schema-1 history migration.
+- [x] Manual retention cleanup with policy-permitted minimal deletion records and source eligibility checks.
+- [ ] Approve actual provider contracts and rights evidence before any real ingestion.
+- [ ] Enforce retention across production storage, backups and external copies; local cleanup is not secure erasure.
+- [ ] Add authenticated reviewers, authorization and production transactions before publication or unattended operation.
+
+## DL-003B-R2 — Deletion integrity and historical redaction
+- [x] Address confirmed restoration after marker-free deletion with a repository-wide retention-review hold.
+- [x] Bound policy-permitted identity markers with finite audit retention; purge expired and deadline-less markers without renewal.
+- [x] Omit identities from rejected/duplicate outcome events and scrub historical identifying audit orphans under the review hold.
+- [x] Redact all versions of source-linked stories and linked approval/audit identities; block reuse of redacted history.
+- [x] Migrate schema 1/2 read-only to schema 3 under a conservative review hold; preserve unrelated lawful history.
+- [x] R2 validation executed on Node 22.16.0: TypeScript and 134/134 backend/domain tests passed; Chromium 7/7 passed. See [R2 validation report](DL-003B-R2_VALIDATION.md).
+- [ ] Design a legally reviewed release-from-hold process and deletion enforcement across production copies before real-provider use.
+
 ## DL-003C — News rights, editorial review and publication
 - [ ] Select permitted content feeds and negotiate needed usage rights.
 - [ ] Deduplicate story clusters while retaining originating-report provenance.

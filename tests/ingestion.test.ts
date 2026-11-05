@@ -7,8 +7,11 @@ import { GNewsProvider, normalizeGNews } from '../src/ingestion/gnews.ts';
 import { ingestArticles, sourceId } from '../src/ingestion/ingest.ts';
 import { Newsroom } from '../src/newsroom/service.ts';
 import { JsonRepository } from '../src/newsroom/store.ts';
-import { articles, policy } from '../fixtures/fictional-news.ts';
+import { articles, context, fixtureAt, resolutions } from '../fixtures/fictional-news.ts';
+import type { IngestionContext } from '../src/ingestion/ingest.ts';
 import type { ProviderArticle } from '../src/ingestion/types.ts';
+const clock = () => fixtureAt;
+const settings = { clock, resolutions };
 const req = {query:'fiction', page:1, limit:3};
 const make = (fn: typeof fetch) => new GNewsProvider({ enabled:true, apiKey:'fictional-test-key', transport:fn });
 const resp = (status: number, json: unknown = {}) => new Response(JSON.stringify(json), {status});
@@ -46,45 +49,50 @@ test('normalization discards provider text and leaves unknown origins unresolved
 });
 test('fixture dry run is deterministic and does not write', async () => {
   const dir = await mkdtemp(join(tmpdir(),'dayline-ingest-')); try {
-    const repo = new JsonRepository(join(dir,'fictional.json')); const newsroom = new Newsroom(repo);
-    assert.deepEqual(await ingestArticles(newsroom,articles,policy), {processed:1, duplicate:1, rejected:1, failed:0});
+    const repo = new JsonRepository(join(dir,'fictional.json')); const newsroom = new Newsroom(repo, {clock});
+    assert.deepEqual(await ingestArticles(repo,articles,context,settings), {processed:1, duplicate:1, rejected:0, quarantined:1, failed:0});
     assert.equal((await newsroom.snapshot()).audit.length, 0);
-    await assert.rejects(ingestArticles(newsroom,articles,{...policy,discoveryMetadata:false}), /rights/);
-    await assert.rejects(ingestArticles(newsroom,articles,{...policy,retentionDays:0}), /policy/);
-    await assert.rejects(ingestArticles(newsroom,articles,policy,{maxArticles:2}), /limit/);
+    await assert.rejects(ingestArticles(repo,articles,{...context,discoveryMetadata:true} as IngestionContext,settings), /caller policies/);
+    await assert.rejects(ingestArticles(repo,articles,{...context,policyId:'fictional-expired-v1'},settings), /policy/);
+    await assert.rejects(ingestArticles(repo,articles,context,{...settings,maxArticles:2}), /limit/);
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
 test('write ingestion is idempotent, preserves syndication and audits outcomes', async () => {
   const dir = await mkdtemp(join(tmpdir(),'dayline-ingest-')); try {
-    const newsroom = new Newsroom(new JsonRepository(join(dir,'fictional.json')));
+    const repo = new JsonRepository(join(dir,'fictional.json')); const newsroom = new Newsroom(repo, {clock});
     const first = articles[0]; const copy: ProviderArticle = {...first,url:'https://fiction.example.test/copy',publisher:'Fictional Syndication',provenance:{type:'SYNDICATED',originId:sourceId(first.url)}};
     const input = [first, copy, articles[1], articles[2]];
-    assert.deepEqual(await ingestArticles(newsroom,input,policy,{dryRun:false}), {processed:2,duplicate:1,rejected:1,failed:0});
+    const copyResolution = {...resolutions[0], sourceId:sourceId(copy.url), classification:'SYNDICATED' as const, originId:sourceId(first.url)};
+    const writeSettings = {...settings,dryRun:false,resolutions:[...resolutions,copyResolution]};
+    assert.deepEqual(await ingestArticles(repo,input,context,writeSettings), {processed:2,duplicate:1,rejected:0,quarantined:1,failed:0});
     const state = await newsroom.snapshot(); assert.equal(state.sources.length,2); assert.equal(await newsroom.independentCount(state.sources.map(s=>s.id)),1);
     assert.equal(state.audit.filter(a=>a.action.startsWith('INGESTION_')).length,4);
-    assert.deepEqual(await ingestArticles(newsroom,input,policy,{dryRun:false}), {processed:0,duplicate:3,rejected:1,failed:0});
+    assert.equal(state.quarantine.length,1);
+    assert.deepEqual(await ingestArticles(repo,input,context,writeSettings), {processed:0,duplicate:4,rejected:0,quarantined:0,failed:0});
     assert.equal(state.revisions.length,0);
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
 test('invalid timestamps, missing URLs and unknown syndication are rejected individually', async () => {
   const dir=await mkdtemp(join(tmpdir(),'dayline-ingest-')); try {
-    const newsroom = new Newsroom(new JsonRepository(join(dir,'fictional.json')));
+    const repo = new JsonRepository(join(dir,'fictional.json')); const newsroom = new Newsroom(repo, {clock});
+    const unknownCopy = { ...resolutions[0], sourceId:sourceId('https://fiction.example.test/copy'), classification:'SYNDICATED' as const, originId:'missing' };
     const invalid = [{...articles[0],url:''},{...articles[0],publishedAt:'not a date'}, {...articles[0],url:'https://fiction.example.test/copy',provenance:{type:'SYNDICATED',originId:'missing'}}, articles[0]] as ProviderArticle[];
-    assert.deepEqual(await ingestArticles(newsroom,invalid,policy,{dryRun:false}), {processed:1,duplicate:0,rejected:3,failed:0});
+    assert.deepEqual(await ingestArticles(repo,invalid,context,{...settings,dryRun:false,resolutions:[...resolutions,unknownCopy]}), {processed:1,duplicate:0,rejected:3,quarantined:0,failed:0});
     assert.equal((await newsroom.snapshot()).sources.length,1);
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
 
 test('partial repository failures are counted and later items continue', async () => {
   const dir=await mkdtemp(join(tmpdir(),'dayline-ingest-')); try {
-    const newsroom = new Newsroom(new JsonRepository(join(dir,'fictional.json')));
-    const original = newsroom.ingest.bind(newsroom); let calls=0;
-    newsroom.ingest = async (...args) => { if (++calls === 1) throw Error('internal failure'); return original(...args); };
+    let calls=0;
+    const repo = new JsonRepository(join(dir,'fictional.json'), {beforeCommit:()=>{ if (++calls === 1) throw Error('internal storage failure'); }});
     const second = {...articles[0], url:'https://fiction.example.test/second'};
     const outcomes: string[] = [];
-    const result = await ingestArticles(newsroom, [articles[0],second], policy, {dryRun:false, onOutcome:(i,o)=>outcomes.push(`${i}:${o}`)});
-    assert.deepEqual(result,{processed:1,duplicate:0,rejected:0,failed:1});
+    const result = await ingestArticles(repo, [articles[0],second], context, {...settings,dryRun:false,resolutions:[...resolutions,{...resolutions[0],sourceId:sourceId(second.url)}],onOutcome:(i,o)=>outcomes.push(`${i}:${o}`)});
+    assert.deepEqual(result,{processed:1,duplicate:0,rejected:0,quarantined:0,failed:1});
     assert.deepEqual(outcomes,['0:failed','1:processed']);
-    assert.equal((await newsroom.snapshot()).sources.length,1);
+    const state = await repo.read();
+    assert.equal(state.sources.length,1);
+    assert.equal(state.audit.filter(a=>a.action==='INGESTION_PROCESSED').length,1);
   } finally { await rm(dir,{recursive:true,force:true}); }
 });

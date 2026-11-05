@@ -1,14 +1,15 @@
+import type { ManagedSource, QuarantinedSource, ProvenanceDecision, DeletionMarker } from '../ingestion/records.ts';
 /** Internal, fictional-test-only newsroom records. No identity authentication is provided. */
 export type SourceType = 'PRIMARY' | 'ORIGINAL' | 'SYNDICATED' | 'SECONDARY';
 export type Verification = 'UNVERIFIED' | 'VERIFIED' | 'DISPUTED';
 export type Status = 'INGESTED' | 'CLUSTERED' | 'DRAFT' | 'NEEDS_REVIEW' | 'APPROVED' | 'PUBLISHED' | 'REJECTED' | 'ON_HOLD' | 'CORRECTION_REQUIRED';
 export interface Source { id: string; publisher: string; url: string; canonicalUrl: string; type: SourceType; publishedAt: string; retrievedAt: string; originId: string; rights: string; verification: Verification }
 export interface Evidence { id: string; claim: string; support: string[]; contradict: string[]; verification: Verification; uncertainty: string; reviewerDecisions: string[] }
-export interface Story { id: string; headline: string; topic: string; summary: string; geography: string; eventAt: string | null; firstSeenAt: string; updatedAt: string; clusterId: string | null; evidence: Evidence[]; sourceIds: string[]; status: Status; version: number }
-export interface Approval { storyId: string; version: number; reviewer: string; at: string }
-export interface Audit { id: string; storyId: string | null; action: string; actor: string; at: string; version: number | null }
-export interface State { schema: 1; sources: Source[]; revisions: Story[]; approvals: Approval[]; audit: Audit[] }
-export const emptyState = (): State => ({ schema: 1, sources: [], revisions: [], approvals: [], audit: [] });
+export interface Story { id: string; headline: string; topic: string; summary: string; geography: string; eventAt: string | null; firstSeenAt: string; updatedAt: string; clusterId: string | null; evidence: Evidence[]; sourceIds: string[]; status: Status; version: number; retentionRedacted?: true }
+export interface Approval { storyId: string; version: number; reviewer: string; at: string; retentionRedacted?: true }
+export interface Audit { id: string; storyId: string | null; action: string; actor: string; at: string; version: number | null; subjectId?: string }
+export interface State { schema: 3; retentionReviewRequired: boolean; sources: Source[]; revisions: Story[]; approvals: Approval[]; audit: Audit[]; managedSources: ManagedSource[]; quarantine: QuarantinedSource[]; provenanceDecisions: ProvenanceDecision[]; deletions: DeletionMarker[] }
+export const emptyState = (): State => ({ schema: 3, retentionReviewRequired: false, sources: [], revisions: [], approvals: [], audit: [], managedSources: [], quarantine: [], provenanceDecisions: [], deletions: [] });
 export function canonicalURL(raw: string): string {
   const u = new URL(raw);
   if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) throw Error('Invalid source URL');

@@ -42,5 +42,5 @@ export function normalizeGNews(value: unknown, retrievedAt: string): import('./t
   if (!value || typeof value !== 'object') throw Error('Invalid article');
   const item = value as {url?: unknown; publishedAt?: unknown; source?: {name?: unknown}};
   if (typeof item.url !== 'string' || typeof item.publishedAt !== 'string' || typeof item.source?.name !== 'string' || !item.source.name.trim()) throw Error('Incomplete article metadata');
-  return { url: item.url, publisher: item.source.name, publishedAt: item.publishedAt, retrievedAt, provenance: { type: 'UNKNOWN', originId: null } };
+  return { providerId: 'gnews', url: item.url, publisher: item.source.name, publishedAt: item.publishedAt, retrievedAt, provenance: { type: 'UNKNOWN', originId: null } };
 }
