@@ -73,7 +73,7 @@ test('retention expires at the exact deadline and repeated cleanup is idempotent
     assert.deepEqual(await cleanupRetention(repository, deleteAt, false), { candidates: 1, deleted: 1 });
     const state = await repository.read();
     assert.deepEqual(state.sources, []); assert.deepEqual(state.managedSources, []);
-    assert.deepEqual(state.deletions, [{ sourceId: id('origin'), at: deleteAt, reason: 'RETENTION_EXPIRED' }]);
+    assert.deepEqual(state.deletions, [{ sourceId: id('origin'), at: deleteAt, reason: 'RETENTION_EXPIRED', expiresAt: '2026-01-03T00:00:00.000Z' }]);
     assert.equal(state.audit.length, 1);
     assert.deepEqual(Object.keys(state.audit[0]).sort(), ['id', 'storyId', 'action', 'actor', 'at', 'version', 'subjectId'].sort());
     assert.equal(state.audit[0].action, 'RETENTION_DELETED');
@@ -185,7 +185,9 @@ test('linked provenance and actor assertions are removed while unrelated audit r
     const linked = { id: 'linked-audit', storyId: null, action: 'PROVENANCE_RESOLVED', actor: 'private-actor-assertion',
       at: retainedAt, version: null, subjectId: id('origin') };
     const unrelated = { ...linked, id: 'unrelated-audit', actor: 'unrelated actor', subjectId: id('unrelated') };
-    await seed(repository, { audit: [linked, unrelated], provenanceDecisions: [
+    const stillRetained = { ...source('unrelated'), retrievedAt: '2026-01-01T12:00:00Z' };
+    const unrelatedGrant = managed('unrelated', { retainedAt: stillRetained.retrievedAt, deleteAt: '2026-01-02T12:00:00Z', providerMetadata: { url: stillRetained.url, publisher: stillRetained.publisher, publishedAt: stillRetained.publishedAt, retrievedAt: stillRetained.retrievedAt } });
+    await seed(repository, { sources: [source(), stillRetained], managedSources: [managed(), unrelatedGrant], audit: [linked, unrelated], provenanceDecisions: [
       { id: 'decision-source', sourceId: id('origin'), classification: 'ORIGINAL', originId: null,
         actorAssertion: 'private-actor-assertion', at: retainedAt, evidenceReferences: ['private-evidence'], reason: 'private-reason' },
       { id: 'decision-origin', sourceId: id('copy'), classification: 'SYNDICATED', originId: id('origin'),
@@ -196,7 +198,8 @@ test('linked provenance and actor assertions are removed while unrelated audit r
     assert.deepEqual(state.provenanceDecisions, []);
     assert.deepEqual(state.audit.find(event => event.id === 'unrelated-audit'), unrelated);
     assert.equal(state.audit.length, 2);
-    assert.doesNotMatch(JSON.stringify(state), /private-actor-assertion|private-evidence|private-reason|Fictional origin|fiction\.example/);
+    assert.doesNotMatch(JSON.stringify(state), /private-actor-assertion|private-evidence|private-reason|Fictional origin|fiction\.example\.test\/origin/);
+    assert.deepEqual(state.sources, [stillRetained]);
   });
 });
 
@@ -241,7 +244,7 @@ test('provider syndication assertions do not override a resolved original during
   });
 });
 
-test('retention preserves editorial revisions and approvals plus unrelated source history', async () => {
+test('retention redacts source-linked history explicitly while preserving approval existence and unrelated sources', async () => {
   await fixture(async repository => {
     const revision: Story = { id: 'fictional-story', headline: 'Fictional fixture headline', topic: 'fixture', summary: 'Fictional summary',
       geography: 'fixture', eventAt: null, firstSeenAt: retainedAt, updatedAt: retainedAt, clusterId: null,
@@ -252,7 +255,15 @@ test('retention preserves editorial revisions and approvals plus unrelated sourc
     await seed(repository, { sources: [source(), unrelated], revisions: [revision], approvals: [approval] });
     await cleanupRetention(repository, deleteAt, false);
     const state = await repository.read();
-    assert.deepEqual(state.revisions, [revision]); assert.deepEqual(state.approvals, [approval]);
+    assert.equal(state.revisions.length, 1); assert.equal(state.approvals.length, 1);
+    const retained = state.revisions[0], retainedApproval = state.approvals[0];
+    assert.notEqual(retained.id, revision.id); assert.equal(retained.retentionRedacted, true);
+    assert.equal(retained.status, revision.status); assert.equal(retained.version, revision.version);
+    assert.deepEqual(retained.evidence, []); assert.deepEqual(retained.sourceIds, []);
+    assert.equal(retainedApproval.storyId, retained.id); assert.equal(retainedApproval.version, approval.version);
+    assert.equal(retainedApproval.retentionRedacted, true); assert.notEqual(retainedApproval.reviewer, approval.reviewer);
+    assert.doesNotMatch(JSON.stringify(retained), /Fictional fixture headline|Fictional summary|Fictional claim/);
+    assert.equal(state.retentionReviewRequired, true);
     assert.deepEqual(state.sources, [unrelated]);
   });
 });

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { JsonRepository } from '../newsroom/store.ts';
 import type { State } from '../newsroom/model.ts';
 import type { ManagedSource } from './records.ts';
+import { redactEditorialHistory } from './history.ts';
 import { policyStatus } from './policies.ts';
 
 const day = 86_400_000;
@@ -15,7 +16,7 @@ function timestamp(value: unknown): number | undefined {
   return new Date(parsed).toISOString() === expected ? parsed : undefined;
 }
 
-interface Candidate { reason: string; minimalAudit: boolean }
+interface Candidate { reason: string; minimalAudit: boolean; auditDays: number }
 
 function expiryReason(record: ManagedSource, at: string, now: number): string | undefined {
   const retained = timestamp(record.retainedAt);
@@ -46,8 +47,12 @@ function candidates(state: State, at: string, now: number): Map<string, Candidat
   for (const record of records) {
     const reason = expiryReason(record, at, now);
     if (reason && !result.has(record.sourceId)) {
-      result.set(record.sourceId, { reason, minimalAudit: eligibleAudit(record.sourceId) });
+      result.set(record.sourceId, { reason, minimalAudit: eligibleAudit(record.sourceId), auditDays: record.policy.auditRetentionDays });
     }
+  }
+  for (const marker of state.deletions) {
+    const record = records.find(r => r.sourceId === marker.sourceId);
+    if (record && !result.has(record.sourceId)) result.set(record.sourceId, { reason: 'PREVIOUSLY_DELETED', minimalAudit: false, auditDays: 0 });
   }
   // A managed syndicated copy cannot outlive a removed origin. Iterate to also
   // handle historical chains; this never creates or rewrites editorial history.
@@ -61,7 +66,7 @@ function candidates(state: State, at: string, now: number): Map<string, Candidat
       // classification can establish the dependency that triggers a cascade.
       const origin = source?.type === 'SYNDICATED' ? source.originId : null;
       if (origin && result.has(origin)) {
-        result.set(record.sourceId, { reason: 'ORIGIN_REMOVED', minimalAudit: eligibleAudit(record.sourceId) });
+        result.set(record.sourceId, { reason: 'ORIGIN_REMOVED', minimalAudit: eligibleAudit(record.sourceId), auditDays: record.policy.auditRetentionDays });
         changed = true;
       }
     }
@@ -78,7 +83,7 @@ function opaqueIdentity(sourceId: string): string {
  * Manual, deterministic local retention cleanup. Dry runs only read. Real runs
  * commit metadata removal and permitted minimal audit in one transaction.
  * This is logical deletion from this JSON repository, not secure erasure of
- * filesystems, backups, snapshots, or immutable editorial revision history.
+ * filesystems, backups or external copies. Linked editorial histories are explicitly redacted.
  */
 export async function cleanupRetention(repository: JsonRepository, at: string, dryRun = true): Promise<{ candidates: number; deleted: number }> {
   const now = timestamp(at);
@@ -86,7 +91,25 @@ export async function cleanupRetention(repository: JsonRepository, at: string, d
   if (dryRun) return { candidates: candidates(await repository.read(), at, now).size, deleted: 0 };
   return repository.transact(state => {
     const selected = candidates(state, at, now);
-    if (selected.size === 0) return { candidates: 0, deleted: 0 };
+    const governedSubjects = new Set([...state.managedSources.map(r => r.sourceId), ...state.quarantine.map(r => r.sourceId), ...state.deletions.filter(d => { const expiry = timestamp(d.expiresAt); return expiry !== undefined && expiry > now; }).map(d => d.sourceId)]);
+    const orphanAudits = new Set(state.audit.filter(event => event.subjectId && !governedSubjects.has(event.subjectId)).map(event => event.subjectId!));
+    const priorMarkers = new Map(state.deletions.map(marker => [marker.sourceId, marker]));
+    const expiredMarkers = new Set(state.deletions.filter(marker => {
+      const expiry = timestamp(marker.expiresAt);
+      return expiry === undefined || expiry <= now;
+    }).map(marker => marker.sourceId));
+    // No identifying replay blocklist is permitted forever. Once cleanup has
+    // removed data, only a non-identifying repository-wide review hold can safely
+    // prevent restoration after permitted identity markers disappear.
+    if (selected.size || priorMarkers.size || orphanAudits.size) state.retentionReviewRequired = true;
+    state.deletions = state.deletions.filter(marker => !expiredMarkers.has(marker.sourceId));
+    const present = new Set([...state.sources.map(s => s.id), ...state.quarantine.map(q => q.sourceId)]);
+    const historicalReferences = state.revisions.flatMap(story => [...story.sourceIds, ...story.evidence.flatMap(e => [...e.support, ...e.contradict])]);
+    const removed = new Set([...selected.keys(), ...expiredMarkers, ...orphanAudits, ...historicalReferences.filter(id => !present.has(id))]);
+    const historiesRedacted = redactEditorialHistory(state, removed, at);
+    state.audit = state.audit.filter(event => !event.subjectId || !expiredMarkers.has(event.subjectId));
+    state.audit = state.audit.map(event => event.subjectId && orphanAudits.has(event.subjectId) ? { id: randomUUID(), storyId: null, action: 'INGESTION_AUDIT_REDACTED', actor: 'retention-service', at, version: null } : event);
+    if (historiesRedacted) state.retentionReviewRequired = true;
     state.sources = state.sources.filter(source => !selected.has(source.id));
     state.managedSources = state.managedSources.filter(record => !selected.has(record.sourceId));
     state.quarantine = state.quarantine.filter(record => !selected.has(record.sourceId));
@@ -98,10 +121,13 @@ export async function cleanupRetention(repository: JsonRepository, at: string, d
       // No identity, provenance, URL, publisher, evidence, or asserted actor is
       // retained when the captured policy does not permit minimal audit.
       if (!candidate.minimalAudit) continue;
+      const prior = priorMarkers.get(sourceId);
+      const expires = prior ? timestamp(prior.expiresAt) : now + candidate.auditDays * day;
+      if (expires === undefined || !Number.isSafeInteger(expires) || expires <= now) continue;
       const subjectId = opaqueIdentity(sourceId);
       state.audit.push({ id: randomUUID(), storyId: null, action: 'RETENTION_DELETED',
         actor: 'retention-service', at, version: null, subjectId });
-      state.deletions.push({ sourceId: subjectId, at, reason: candidate.reason });
+      state.deletions.push({ sourceId: subjectId, at, reason: candidate.reason, expiresAt: new Date(expires).toISOString() });
     }
     return { candidates: selected.size, deleted: selected.size };
   });
