@@ -5,7 +5,7 @@
 An evidence-first daily news and economic intelligence platform by MauroDot.
 
 ## Status
-**Foundation 001 — active, initial runnable application committed.** The GitHub branch provides a new responsive shell, Node 22 TypeScript server, official data adapters, mocked integration tests, and GitHub Actions CI. This is **not yet a faithful import of the separately hosted original design**. Windows 11 physical acceptance previously passed for the homepage, Treasury, NWS, startup and nine tests; this does not establish design parity. News automation, AI narration and payments are not implemented.
+**Foundation 001 — active, initial runnable application committed.** The GitHub branch provides a new responsive shell, Node 22 TypeScript server, official data adapters, mocked integration tests, and GitHub Actions CI. This is **not yet a faithful import of the separately hosted original design**. Windows 11 physical acceptance previously passed for the homepage, Treasury, NWS, startup and nine tests; this does not establish design parity. Live news automation, AI narration and payments are not implemented.
 
 - [Project charter](docs/PROJECT_CHARTER.md)
 - [Architecture proposal](docs/ARCHITECTURE.md)
@@ -73,7 +73,7 @@ Foundation review is not production readiness. Future paid services require sepa
 
 ## Internal newsroom prototype
 
-DL-003A adds local TypeScript domain services under `src/newsroom`; the website and HTTP API expose no newsroom or publication endpoints. Tests under `tests/newsroom.test.ts` use explicitly fictional sources and events. Run `npm ci` and `npm run check` for typechecking, newsroom tests and existing backend/HTTP checks; browser prerequisites and commands are above. See the architecture notes for source provenance, editorial transitions, repository limitations and the production authorization block. No real news feed, automated article generation or public publishing is enabled.
+DL-003A adds local TypeScript domain services under `src/newsroom`; the website and HTTP API expose no newsroom or publication endpoints. Tests under `tests/newsroom.test.ts` use explicitly fictional sources and events. Run `npm ci` and `npm run check` for typechecking, newsroom tests and existing backend/HTTP checks; browser prerequisites and commands are above. See the architecture notes for source provenance, editorial transitions, repository limitations and the production authorization block. No real news feed, real AI request or public publishing is enabled.
 
 ## Fictional ingestion fixture
 
@@ -88,3 +88,11 @@ DL-003B-R2 addresses two confirmed R1 gaps: refreshed metadata could restore a d
 `npm run retention:fixture` seeds a temporary fictional repository and previews cleanup without applying its deletions. `npm run retention:fixture -- --apply-fixture` applies cleanup to that temporary fixture. Both remove their temporary directory afterwards, accept no existing repository path or live mode, and make no network requests. Direct newsroom ingestion is also restricted to explicitly labeled fictional `.test` sources; provider-managed imports must use the registry workflow.
 
 The GNews adapter remains disabled by default with no live CLI. Real-provider licensing, authenticated production authorization, external-copy retention controls, transactional production storage and public publication remain blocked. Cleanup covers the current JSON repository, not secure erasure, backups, fresh repositories, external copies or unlinked prose. See [retention policy](docs/RETENTION_POLICY.md), [provider evaluation](docs/NEWS_PROVIDER_EVALUATION.md) and [architecture notes](docs/ARCHITECTURE.md).
+
+## Mock editorial proposals
+
+DL-003C adds an internal, deterministic mock drafting workflow under `src/editorial`. It extracts structured proposals from explicitly fictional, rights-authorized stored evidence. There is no drafting HTTP endpoint, live AI adapter, API key, model SDK or paid request. `npm run check` runs static checking and the deterministic backend/domain tests; browser regression commands and prerequisites are above.
+
+Drafts preserve exact evidence claims, supporting and contradicting references, and uncertainties. Strict validation rejects invented citations, changed figures/dates and quotations; it does not establish that an existing evidence claim is true. Pattern-based language flags are advisory review suggestions, not truth or neutrality scores. Source text and model responses are untrusted, and heuristic injection checks do not establish complete immunity.
+
+Generation requires the current story revision, evidence marked `VERIFIED`, eligible managed metadata and an exact active policy snapshot permitting excerpts, internal analysis and AI summarization. Only a fictional test policy grants those permissions. Draft review records explicitly unauthenticated actor assertions; `READY_FOR_APPROVAL` does not approve a newsroom story, verify a source or authorize publication. Story changes, expired/revoked rights and retention cleanup invalidate affected proposals and remove their payload and review identities. Input/output, attempts, concurrency, proposal count, timeout, cancellation and estimated-cost limits bound local mock runs. See [AI editorial design](docs/AI_EDITORIAL_DESIGN.md) for the contracts and production blockers, and the [DL-003C validation report](docs/DL-003C_VALIDATION.md) for executed local checks.

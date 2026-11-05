@@ -31,20 +31,41 @@ const quarantinedSource = (row: RecordValue): boolean => managedSource(row) && r
 const provenanceDecision = (row: RecordValue): boolean => strings(row, ['id', 'sourceId', 'classification', 'actorAssertion', 'at', 'reason']) && ['PRIMARY', 'ORIGINAL', 'SECONDARY', 'SYNDICATED', 'UNKNOWN', 'DISPUTED'].includes(row.classification as string) && nullableString(row.originId) && stringArray(row.evidenceReferences);
 const deletion = (row: RecordValue): boolean => strings(row, ['sourceId', 'at', 'reason']) && (!Object.hasOwn(row, 'expiresAt') || typeof row.expiresAt === 'string');
 
+const draftStates = ['GENERATED', 'NEEDS_REVIEW', 'REVISION_REQUESTED', 'READY_FOR_APPROVAL', 'REJECTED', 'INVALIDATED', 'ON_HOLD'];
+const draftState = (value: unknown): boolean => typeof value === 'string' && draftStates.includes(value);
+const nonnegativeInteger = (value: unknown): boolean => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const draftSection = (row: RecordValue): boolean => strings(row, ['kind', 'text']) && ['FACT', 'ANALYSIS', 'UNCERTAINTY'].includes(row.kind as string) && stringArray(row.evidenceIds);
+const draftClaim = (row: RecordValue): boolean => strings(row, ['evidenceId', 'text']) && stringArray(row.supportingSourceIds) && stringArray(row.contradictingSourceIds);
+const draftOutput = (row: RecordValue): boolean => strings(row, ['headline', 'summary']) && rows(row.sections, draftSection) && rows(row.claims, draftClaim) && stringArray(row.uncertainties);
+const draftPolicy = (row: RecordValue): boolean => strings(row, ['sourceId', 'providerId', 'policyId', 'snapshotDigest']) && positiveInteger(row.policyVersion);
+const draftSuggestion = (row: RecordValue): boolean => strings(row, ['code', 'message']) && ['LOADED_LANGUAGE', 'UNSUPPORTED_CAUSALITY', 'UNATTRIBUTED_ALLEGATION', 'MISLEADING_CERTAINTY', 'MISSING_UNCERTAINTY', 'UNSUPPORTED_NUMBERS', 'OPINION_AS_FACT', 'MISSING_COUNTEREVIDENCE', 'HEADLINE_BODY_CONFLICT'].includes(row.code as string);
+const draftUsage = (row: RecordValue): boolean => ['inputTokens', 'outputTokens', 'estimatedCostMicros'].every(key => nonnegativeInteger(row[key]));
+function draft(row: RecordValue): boolean {
+  if (row.status === 'INVALIDATED') {
+    // Invalid proposals may retain only this marker, never licensed payload or linkage.
+    return strings(row, ['id', 'invalidatedAt']) && row.reason === 'STALE_OR_INELIGIBLE' && Object.keys(row).every(key => ['id', 'status', 'invalidatedAt', 'reason'].includes(key));
+  }
+  return strings(row, ['id', 'storyId', 'generatedAt', 'expiresAt', 'providerId', 'modelVersion']) && positiveInteger(row.storyVersion) && positiveInteger(row.version) && draftState(row.status) && row.promptTemplateVersion === 'dayline-editorial-v1' && stringArray(row.sourceIds) && rows(row.policies, draftPolicy) && record(row.output) && draftOutput(row.output) && rows(row.suggestions, draftSuggestion) && record(row.usage) && draftUsage(row.usage);
+}
+const draftReview = (row: RecordValue): boolean => strings(row, ['draftId', 'actorAssertion', 'at']) && positiveInteger(row.fromVersion) && positiveInteger(row.toVersion) && (row.storyVersion === null || positiveInteger(row.storyVersion)) && draftState(row.fromState) && draftState(row.toState) && row.unauthenticated === true;
+
 function stateFromJSON(value: unknown): State {
   if (!record(value) || !baseArrays(value)) throw Error('Invalid repository format');
+  if (value.schema !== 4 && ['drafts', 'draftReviews'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
   if (value.schema === 1) {
     if (['managedSources', 'quarantine', 'provenanceDecisions', 'deletions', 'retentionReviewRequired'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
     // Legacy assertions remain history, never an implicit rights or provenance approval.
     return { ...emptyState(), retentionReviewRequired: true, sources: value.sources, revisions: value.revisions, approvals: value.approvals, audit: value.audit } as State;
   }
-  if (![2, 3].includes(value.schema as number) || !rows(value.managedSources, managedSource) || !rows(value.quarantine, quarantinedSource) || !rows(value.provenanceDecisions, provenanceDecision) || !rows(value.deletions, deletion)) throw Error('Invalid repository format');
+  if (![2, 3, 4].includes(value.schema as number) || !rows(value.managedSources, managedSource) || !rows(value.quarantine, quarantinedSource) || !rows(value.provenanceDecisions, provenanceDecision) || !rows(value.deletions, deletion)) throw Error('Invalid repository format');
   if (value.schema === 2) {
     if (Object.hasOwn(value, 'retentionReviewRequired')) throw Error('Invalid repository format');
     // Earlier deletion may have erased all linkage; require an explicit retention review.
-    return { ...value, schema: 3, retentionReviewRequired: true } as unknown as State;
+    return { ...value, schema: 4, retentionReviewRequired: true, drafts: [], draftReviews: [] } as unknown as State;
   }
   if (typeof value.retentionReviewRequired !== 'boolean') throw Error('Invalid repository format');
+  if (value.schema === 3) return { ...value, schema: 4, drafts: [], draftReviews: [] } as unknown as State;
+  if (!rows(value.drafts, draft) || !rows(value.draftReviews, draftReview)) throw Error('Invalid repository format');
   return value as unknown as State;
 }
 
@@ -81,7 +102,7 @@ export class JsonRepository {
       const result = change(state);
       // A result that cannot be returned must fail before any data is committed.
       const clonedResult = structuredClone(result);
-      if (state.schema !== 3) throw Error('Invalid repository format');
+      if (state.schema !== 4) throw Error('Invalid repository format');
       stateFromJSON(state);
       const serialized = JSON.stringify(state);
       const file = await open(temp, 'wx', 0o600);

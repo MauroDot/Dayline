@@ -44,6 +44,8 @@ function fictionalPolicy(id: string, changes: Partial<RegistryPolicy> = {}): Reg
 // deeply freezes the entire private registry. No caller can register policies.
 const registry: readonly Readonly<RegistryPolicy>[] = Object.freeze([
   fictionalPolicy('fictional-metadata-v1'),
+  fictionalPolicy('fictional-ai-editorial-v1', { licensedExcerpt: true, internalAnalysis: true, aiSummarization: true }),
+  fictionalPolicy('fictional-ai-revoked-v1', { licensedExcerpt: true, internalAnalysis: true, aiSummarization: true, reviewStatus: 'REVOKED' }),
   fictionalPolicy('fictional-discard-v1', { quarantineMetadata: false }),
   fictionalPolicy('fictional-no-audit-v1', { minimalAudit: false, auditRetentionDays: 0 }),
   fictionalPolicy('fictional-expired-v1', { expiresAt: '2026-01-02T00:00:00.000Z' }),
