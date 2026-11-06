@@ -5,12 +5,12 @@
 An evidence-first daily news and economic intelligence platform by MauroDot.
 
 ## Status
-**Foundation 001 — active, initial runnable application committed.** The GitHub branch provides a new responsive shell, Node 22 TypeScript server, official data adapters, mocked integration tests, and GitHub Actions CI. This is **not yet a faithful import of the separately hosted original design**. Windows 11 physical acceptance previously passed for the homepage, Treasury, NWS, startup and nine tests; this does not establish design parity. Live news automation, AI narration and payments are not implemented.
+**Foundation 001 — development milestone previously accepted and merged, as confirmed by the owner.** That historical baseline includes Windows 11 acceptance of the homepage, Treasury, NWS, startup and nine tests. New milestone regression checks and remaining production/accessibility work do not reverse that acceptance. Exact parity with the separately hosted prototype has not been reverified in this milestone. Live news automation, AI narration and payments are not implemented.
 
 - [Project charter](docs/PROJECT_CHARTER.md)
 - [Architecture proposal](docs/ARCHITECTURE.md)
 - [MVP roadmap and acceptance checklist](docs/ROADMAP.md)
-- [Open draft PR #1](https://github.com/MauroDot/Dayline/pull/1)
+- [Foundation PR #1](https://github.com/MauroDot/Dayline/pull/1)
 
 ## Local development
 Requires Node.js **22.16.0 or later** (native experimental TypeScript type stripping) and npm **10 or later**; CI uses Node 22.16.0 and its bundled npm. Install pinned development dependencies with npm ci; TypeScript and Node type definitions are development-only dependencies.
@@ -46,11 +46,11 @@ https://dayline-daily-tom.wintry-olm-1143.chatgpt.site
 - Preserve source timestamps and clearly distinguish official, stale, sample and unavailable states.
 - Run CI plus live integration, browser and user acceptance tests before declaring milestone completion.
 
-## Remaining Foundation 001 work
-1. Retrieve/import approved hosted design source/assets or recreate to documented visual parity with rights review.
-2. Add deployment packaging and reproducible browser tests.
+## Further regression and production work
+1. Compare changed views against the approved reference when available and record any differences.
+2. Maintain browser regressions and prepare separately approved deployment packaging.
 3. Continue monitoring live NWS and Treasury compatibility and official API rate rules.
-4. Record user acceptance and explicit promotion approval before merging.
+4. Record acceptance of new milestones and obtain explicit approval for future promotion.
 
 ## DL-001C interface preview
 
@@ -62,14 +62,16 @@ Install Node.js 22.16.0 or later and npm 10 or later, then in PowerShell from th
 
 Treasury Fiscal Data and the National Weather Service are the current official sources. Treasury's reporting date and the retrieval time are separate; NWS source update times are shown when supplied. The cache is in memory and resets when the server stops. Live data requires network access and an identifying NWS user agent; no market feed, audio, billing, or publishing is active. Demonstration stories are fictional and general reference links do not substantiate them. A focused automated accessibility audit cannot replace assistive-technology testing. The reference prototype was inaccessible through the configured network proxy, so exact visual parity is unverified.
 
-## Foundation acceptance and recovery
+## Regression acceptance and recovery
 
-- [ ] Recheck desktop and mobile layouts, keyboard access, contrast, screen readers, and 200% zoom on target devices.
-- [ ] Run automated checks and physically verify Windows startup, Treasury data and NWS weather with a valid contact.
-- [ ] Compare the authorized prototype, document differences, and obtain owner acceptance.
+Foundation 001 development acceptance and merge are historical facts confirmed by the owner. The checks below concern changed views and future production use; this milestone does not claim new physical acceptance or exact prototype parity.
+
+- [ ] Recheck changed desktop/mobile layouts, keyboard access, contrast, assistive technology, and physical browser zoom on target devices.
+- [ ] Run current automated checks and physically recheck Windows startup, Treasury data and NWS weather with a valid contact.
+- [ ] Compare changed views against the authorized prototype where available and record new milestone acceptance.
 - [ ] Confirm rights, corrections, editorial approval, security, and operational controls before any public deployment.
 
-Foundation review is not production readiness. Future paid services require separately approved cost limits, quotas and alerts; no paid API is enabled here. Never publish unreviewed generated news or commit credentials. To recover locally, stop the server, check `git status`, preserve uncommitted work, and start from a separately reviewed known-good commit in a new checkout or worktree. Do not reset a checkout containing unreviewed work. Public rollback and deployment procedures remain to be designed and approved.
+Production use still requires separately accepted rights, security, operational and accessibility checks. Future paid services require separately approved cost limits, quotas and alerts; no paid API is enabled here. Never publish unreviewed generated news or commit credentials. To recover locally, stop the server, check `git status`, preserve uncommitted work, and start from a separately reviewed known-good commit in a new checkout or worktree. Do not reset a checkout containing unreviewed work. Public rollback and deployment procedures remain to be designed and approved.
 
 ## Internal newsroom prototype
 
@@ -104,3 +106,25 @@ DL-004A adds internal daily edition assembly under `src/editions`. `npm run edit
 Only the latest newsroom `APPROVED` story revision with a matching revision-specific approval and eligible managed fictional sources can be placed. Evidence must be `VERIFIED`; disputed source metadata, including a syndicated original, is rejected. An `UNVERIFIED` source flag alone is not proof of truth, and AI proposal readiness alone is insufficient. Placement copies the current editorial headline/summary and captures evidence, provenance, policy and retention references. Ordering and the optional featured story are explicit choices, with duplicate placements rejected.
 
 Edition edits and review decisions append revisions; editing resets readiness to `ASSEMBLING`. Reviewer assertions remain unauthenticated, and no edition state grants publication permission. Story changes, ineligible rights or retention cleanup invalidate and scrub affected edition history, including copied payload and reviewer assertions. There is no scheduling, live ingestion, model request, voice generation, billing or public publication in this milestone. See [edition design](docs/EDITION_DESIGN.md) for eligibility, lifecycle and preview limitations.
+
+## Development edition page
+
+DL-004B adds an opt-in fictional reader view at http://localhost:3000/dev/edition. Start it locally with both exact settings:
+
+```bash
+NODE_ENV=development DAYLINE_DEV_EDITION=fictional npm start
+```
+
+PowerShell:
+
+```powershell
+$env:NODE_ENV = 'development'
+$env:DAYLINE_DEV_EDITION = 'fictional'
+npm.cmd start
+```
+
+The page, its CSS/JavaScript and its preview response are gated together. They are unavailable in production and require a loopback request with an allowed local Host. No arbitrary edition ID, repository path or query selector is accepted. The server creates an isolated temporary repository from the existing fictional fixture, using current runtime timestamps and the normal managed-rights/newsroom-approval rules; its edition date follows `America/Chicago`. It does not read an existing newsroom repository. A failed or expired fixture produces an unavailable state.
+
+The view preserves the eight section order, featured placement, attribution, uncertainty/counterevidence disclosures and internal review label. It uses safe text rendering, responsive layouts, keyboard navigation, visible focus and reduced-motion styling. “Audio briefing — coming soon” is plain placeholder text. The existing homepage and official-data panels retain their defaults.
+
+Each preview request revalidates edition eligibility and returns only allowlisted display fields, without internal IDs, policy grants, reviewer assertions or audits. Browser display lasts at most 15 seconds per response and is cleared on expiry, failure, page hiding or navigation; no browser storage is used. This is a local fictional presentation, not publication or a production administration interface. See [edition design](docs/EDITION_DESIGN.md) for route details and retention limits, and the [DL-004B validation report](docs/DL-004B_VALIDATION.md) for executed checks and remaining acceptance work.

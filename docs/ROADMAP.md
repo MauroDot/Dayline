@@ -6,10 +6,10 @@
 - [x] Product charter, architecture proposal and milestones prepared.
 - [x] New minimal responsive application shell, TypeScript HTTP server, official-source adapters and mocked tests committed.
 - [x] GitHub Actions syntax checks, Node test suite and startup smoke test passed on initial implementation.
-- [ ] Import the approved hosted prototype source/assets or reach documented visual and behavioral parity.
-- [ ] Add browser regression tests, controlled deployment packaging and release documentation.
-- [ ] Verify upstream Treasury and NWS requests live with required configuration.
-- [ ] User performs physical acceptance; explicit merge approval is required.
+- [x] Owner confirmed Foundation 001 development acceptance and merge; historical Windows homepage/Treasury/NWS/startup acceptance remains recorded.
+- [x] Automated browser regression baseline implemented in subsequent development milestones.
+- [ ] Reverify exact prototype parity for changed views and record new physical/accessibility acceptance.
+- [ ] Complete controlled deployment packaging/release documentation and current live Treasury/NWS regression checks before production use.
 
 ## DL-002 — Official data integrations
 - [x] Treasury Debt to the Penny adapter and as-of / component consistency validation implemented.
@@ -67,6 +67,14 @@
 - [x] Internal fictional JSON preview; homepage and official-data panels remain separate.
 - [x] DL-004A local validation on Node 22.16.0: TypeScript, 282/282 backend/domain tests and 7/7 Chromium regressions passed; see [validation report](DL-004A_VALIDATION.md).
 - [ ] Complete physical acceptance and separately authorized production work.
+
+## DL-004B — Fictional daily edition presentation
+- [x] Dedicated responsive reader view for all eight sections, featured/ordered placements and explicit empty states.
+- [x] Opt-in development/loopback route gates and temporary known-fictional repository; no arbitrary edition/repository selection.
+- [x] Strict display DTO, fresh eligibility checks, short browser display lifetime and no persistent browser storage.
+- [x] Attribution, uncertainty/counterevidence and status disclosures; plain coming-soon audio placeholder.
+- [x] DL-004B local validation on Node 22.16.0: TypeScript, 304/304 backend/domain/security tests and 18/18 Chromium regressions passed; targeted axe checks found no violations. See [validation report](DL-004B_VALIDATION.md).
+- [ ] Obtain new physical browser/assistive-technology acceptance and separately authorize any production work.
 
 ## DL-004 — Remaining edition operations
 - [ ] Authenticated production review and explicitly authorized publication with durable storage.

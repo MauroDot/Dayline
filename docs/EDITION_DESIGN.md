@@ -1,6 +1,6 @@
 # Dayline — Internal daily edition design
 
-DL-004A assembles manually selected, reviewed fictional stories into a structured daily edition for internal inspection. It does not schedule, publish or distribute news, call an AI provider, generate voice, or change the public homepage. There is no edition HTTP/admin endpoint or production reviewer authorization.
+DL-004A assembles manually selected, reviewed fictional stories into a structured daily edition for internal inspection. DL-004B adds a separately gated development reader view over a temporary known-fictional fixture. Neither milestone schedules, publishes or distributes real news, calls an AI provider, generates voice, or changes the public homepage defaults. There is no production edition administration endpoint or reviewer authorization.
 
 ## Domain and deterministic assembly
 
@@ -92,6 +92,37 @@ The command seeds a temporary fictional repository with a fixed fixture clock, p
 
 The preview is labeled `fictional`, `developmentOnly` and `publiclyPublished: false`, with edition date/status, review label, canonical section order, placements, attribution, uncertainties, explicit counterevidence disclosure and stored advisory suggestions. It omits random edition IDs and wall-clock timestamps for repeatability; story/source references remain fictional fixture identifiers. Preview serialization is stable for the same stored revision. An invalidated preview contains its status/reason and no sections or copied payload. It does not expose raw reviewer assertions, render an administration page, publish an edition or replace the public design. Suggestions retain their codes and explanatory messages; they are not a political or truth score.
 
+## Opt-in development reader view
+
+Enable both settings in the server process:
+
+```bash
+NODE_ENV=development DAYLINE_DEV_EDITION=fictional npm start
+```
+
+Open `http://localhost:3000/dev/edition` locally. `.env.example` documents the values but is not automatically loaded. Production mode always disables this surface, even if the fictional toggle is set. The CLI fixture above remains a separate offline JSON command.
+
+| Gated path | Purpose |
+| --- | --- |
+| `/dev/edition` | Fictional reader HTML. |
+| `/dev/edition/edition.css` | Isolated presentation styles. |
+| `/dev/edition/edition.js` | Read-only rendering and display-expiry handling. |
+| `/dev/edition/preview` | Fresh, allowlisted fictional display DTO. |
+
+Every path requires an enabled development process, loopback peer and an allowed local Host. Cross-site browser requests, query selectors and unknown paths are rejected. The surface has no arbitrary repository path, edition ID selector or approval/publication operation. Its assets are not added to the public static-file allowlist; the existing homepage and official-data endpoints retain their behavior.
+
+The presentation source seeds a new temporary repository using the existing invented statements, managed policies, provenance and actual internal newsroom approval transitions. Runtime use supplies the current clock rather than backdating rights, with the edition date calculated in `America/Chicago` rather than from the UTC calendar date. Default deterministic fixture clocks/UTC metadata remain unchanged for offline tests/CLI. If the governing fictional policy is no longer active, the page cannot obtain eligible display content. No existing newsroom file or real provider is read. Normal server close removes the temporary fixture; this is not secure erasure or cleanup of crash leftovers.
+
+## Display data and browser lifetime
+
+Each request obtains a new edition-service snapshot and revalidates its current story/approval, rights and retention eligibility. An expired or invalidated edition yields no retained story text. The safe DTO contains only fictional/development/publication labels, edition date/timezone/revision/status/review label, canonical sections, headline/summary/featured flags, publisher URLs, uncertainties and counterevidence display fields. Attribution links must be HTTPS fictional `.test` URLs without embedded credentials or secret query parameters. It excludes internal edition/story/source/evidence IDs, origin/policy snapshots, reviewer assertions and private audit events.
+
+The page preserves section/card order and a featured story without generating content for empty sections. It presents attribution, uncertainty and recorded counterevidence near the story. All content is clearly fictional. The separate audio area says “Audio briefing — coming soon”; it has no fake playback control or generated voice. The view uses semantic headings/landmarks, a skip link, keyboard section navigation, visible focus, responsive reflow, readable contrast, reduced-motion handling and textual status labels.
+
+Story text is rendered as text, never trusted HTML. The page and responses use no-store and restrictive browser security headers. No local storage, session storage or other persistent browser story cache is used. A response permits display for at most 15 seconds, capped by the underlying source deadline. The client measures that interval from request dispatch, so transfer/validation time does not extend it; expired responses cannot render after a slow request. It clears content on expiry, fetch/validation failure, hidden visibility and page exit; fresh display requires a new valid response. This lease does not extend rights or provide instantaneous remote revocation of text already delivered.
+
+The local-only gate is not authentication or production authorization. A previously delivered response can be copied outside the application, and browser timers are not secure erasure. The existing limitations around screenshots, backups, external copies, crash leftovers and filesystem access remain. No unauthenticated production administration, live news feed or public publication has been added.
+
 ## Validation and production requirements
 
 ```bash
@@ -102,6 +133,8 @@ python -m unittest discover -s tests/browser -v
 git diff --check
 ```
 
-`npm run check` includes TypeScript, public-script syntax and deterministic backend/domain checks. Browser checks require Python Playwright and Chromium; see README for `CHROMIUM_PATH`. Final executed totals belong in the milestone validation report. Fictional automated checks do not establish Windows physical acceptance, current live-source compatibility, licensing or production publication readiness.
+`npm run check` includes TypeScript, public-script syntax and deterministic backend/domain checks. Browser checks require Python Playwright and Chromium; see README for `CHROMIUM_PATH`. The [DL-004B validation report](DL-004B_VALIDATION.md) records executed checks and remaining acceptance work. New viewport, keyboard, reduced-motion, contrast/audit and 200%/400% zoom coverage must be reported only when executed; automated checks do not replace physical browser zoom or assistive-technology acceptance.
+
+The owner confirmed that Foundation 001's development milestone was accepted and merged previously. Remaining checks concern this new presentation and future production use; they do not reverse that historical acceptance. No new physical acceptance, exact prototype parity, live-source compatibility or production readiness is established by the fictional view alone.
 
 Production work remains blocked pending authenticated reviewer identities and permissions, actual provider/derived-content contracts, durable transactional persistence, retention enforcement for all copies, operational monitoring/recovery, independent security/editorial review and explicit publication authorization. Scheduling, paid AI, narration, Stripe and public distribution are outside this milestone.
