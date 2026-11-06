@@ -55,6 +55,8 @@ Mutations check an expected current revision. Cooperating concurrent writers ser
 
 `READY_FOR_APPROVAL` means that an internal edition review step is ready for a separate authorization process. It grants no public publishing permission and does not alter source verification or bypass newsroom revision-specific approvals. Edition review does not start a worker or publish content; the separate scheduler below can prepare only `ASSEMBLING` editions.
 
+DL-005A adds an opt-in authenticated facade for these internal operations. Its separate receipt binds a verified synthetic-session actor to the exact resulting resource revision; it does not relabel prior edition reviews or approve publication. Direct fixture services retain their unauthenticated assertions. See [security design](SECURITY_DESIGN.md) for required permissions, current-session checks and the remaining production identity boundary.
+
 ## Advisory presentation checks
 
 Active edition revisions store named review suggestions for:
@@ -82,7 +84,7 @@ Edition service reads/preview and mutations revalidate lifecycle state; plain JS
 
 ## Persistence and preview
 
-Schema 6 adds schedules and preparation runs alongside the edition revisions/reviews introduced in schema 5. Reading schemas 1–5 migrates in memory without rewriting the file; existing sources, stories, approvals, audits, editorial proposals and editions are preserved. Schema 1/2 remains held for retention review; schema 3/4/5 preserves its existing hold. The next successful transaction persists schema 6.
+Schema 7 adds identity/session metadata, security events and authenticated-action receipts alongside schedules/runs and the edition revisions/reviews introduced in schema 5. Reading schemas 1–6 migrates in memory without rewriting the file; existing sources, stories, approvals, audits, editorial proposals, schedules and editions are preserved without retroactive authentication. Schema 1/2 remains held for retention review; schema 3/4/5/6 preserves its existing hold. The next successful transaction persists schema 7.
 
 ```bash
 npm run edition:fixture
