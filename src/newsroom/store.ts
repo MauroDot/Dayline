@@ -3,6 +3,8 @@ import { dirname, basename, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { emptyState, type State } from './model.ts';
 import { sectionIds } from '../editions/types.ts';
+import { occurrenceOn, validateDefinition } from '../scheduling/calendar.ts';
+import type { PreparationSchedule, ScheduleDefinition } from '../scheduling/types.ts';
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): value is RecordValue => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -10,6 +12,7 @@ const strings = (value: RecordValue, keys: string[]): boolean => keys.every(key 
 const stringArray = (value: unknown): boolean => Array.isArray(value) && value.every(item => typeof item === 'string');
 const nullableString = (value: unknown): boolean => value === null || typeof value === 'string';
 const positiveInteger = (value: unknown): boolean => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+const identifier = (value: unknown): value is string => typeof value === 'string' && Boolean(value.trim()) && value.length <= 128;
 const optionalRedaction = (row: RecordValue): boolean => !Object.hasOwn(row, 'retentionRedacted') || row.retentionRedacted === true;
 const rows = (value: unknown, valid: (row: RecordValue) => boolean): value is RecordValue[] => Array.isArray(value) && value.every(row => record(row) && valid(row));
 const verified = (value: unknown): boolean => typeof value === 'string' && ['UNVERIFIED', 'VERIFIED', 'DISPUTED'].includes(value);
@@ -17,7 +20,7 @@ const source = (row: RecordValue): boolean => strings(row, ['id', 'publisher', '
 const evidence = (row: RecordValue): boolean => strings(row, ['id', 'claim', 'uncertainty']) && verified(row.verification) && ['support', 'contradict', 'reviewerDecisions'].every(key => stringArray(row[key]));
 const revision = (row: RecordValue): boolean => strings(row, ['id', 'headline', 'topic', 'summary', 'geography', 'firstSeenAt', 'updatedAt', 'status']) && ['INGESTED', 'CLUSTERED', 'DRAFT', 'NEEDS_REVIEW', 'APPROVED', 'PUBLISHED', 'REJECTED', 'ON_HOLD', 'CORRECTION_REQUIRED'].includes(row.status as string) && nullableString(row.eventAt) && nullableString(row.clusterId) && positiveInteger(row.version) && stringArray(row.sourceIds) && rows(row.evidence, evidence) && optionalRedaction(row);
 const approval = (row: RecordValue): boolean => strings(row, ['storyId', 'reviewer', 'at']) && positiveInteger(row.version) && optionalRedaction(row);
-const audit = (row: RecordValue): boolean => strings(row, ['id', 'action', 'actor', 'at']) && nullableString(row.storyId) && (row.version === null || positiveInteger(row.version)) && (row.subjectId === undefined || typeof row.subjectId === 'string');
+const audit = (row: RecordValue): boolean => strings(row, ['id', 'action', 'actor', 'at']) && nullableString(row.storyId) && (row.version === null || positiveInteger(row.version)) && (row.subjectId === undefined || typeof row.subjectId === 'string') && ['scheduleId', 'preparationRunId'].every(key => !Object.hasOwn(row, key) || identifier(row[key]));
 const baseArrays = (value: RecordValue): boolean => rows(value.sources, source) && rows(value.revisions, revision) && rows(value.approvals, approval) && rows(value.audit, audit);
 
 // Storage validates record shapes; rights and provenance decisions remain the service's responsibility.
@@ -114,6 +117,56 @@ function editionHistory(editions: RecordValue[], reviews: RecordValue[]): boolea
     && revisions.get(review.editionId as string)?.has(review.toRevision as number));
 }
 
+const definitionKeys = ['name', 'timezone', 'localTime', 'weekdays', 'enabled', 'maxAttempts', 'retryDelayMs', 'catchUpWindowMs'] as const;
+function schedule(row: RecordValue): boolean {
+  if (!exactKeys(row, ['id', ...definitionKeys, 'createdAt', 'updatedAt', 'lastEvaluatedAt', 'nextOccurrence']) || !identifier(row.id) || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(row.id) || !utcTimestamp(row.createdAt) || !utcTimestamp(row.updatedAt) || Date.parse(row.updatedAt) < Date.parse(row.createdAt) || (row.lastEvaluatedAt !== null && !utcTimestamp(row.lastEvaluatedAt))) return false;
+  try {
+    const input = Object.fromEntries(definitionKeys.map(key => [key, row[key]]));
+    const normalized = validateDefinition(input as unknown as ScheduleDefinition);
+    if (definitionKeys.some(key => JSON.stringify(row[key]) !== JSON.stringify(normalized[key]))) return false;
+    return row.nextOccurrence === null || (record(row.nextOccurrence) && occurrence(row.nextOccurrence, row));
+  } catch { return false; }
+}
+function occurrence(row: RecordValue, owner: RecordValue): boolean {
+  if (!exactKeys(row, ['key', 'date', 'timezone', 'localTime', 'at']) || !editionDate(row.date) || !utcTimestamp(row.at) || row.key !== `${owner.id}:${row.date}` || row.timezone !== owner.timezone || row.localTime !== owner.localTime) return false;
+  try {
+    const expected = occurrenceOn(owner as unknown as PreparationSchedule, row.date);
+    return expected !== null && expected.key === row.key && expected.timezone === row.timezone && expected.localTime === row.localTime && Date.parse(expected.at) === Date.parse(row.at);
+  } catch { return false; }
+}
+const failureCodes = ['MISSED_WINDOW', 'EDITION_CONFLICT', 'INELIGIBLE_CONTENT', 'RETENTION_HOLD', 'TRANSIENT_FAILURE', 'INTERRUPTED', 'RETRY_EXHAUSTED', 'PAUSED', 'CANCELLED'];
+const runStates = ['SCHEDULED', 'CLAIMED', 'PREPARING', 'PREPARED', 'NEEDS_ATTENTION', 'FAILED', 'CANCELLED'];
+function preparationRun(row: RecordValue): boolean {
+  if (!exactKeys(row, ['id', 'scheduleId', 'occurrence', 'status', 'attempts', 'maxAttempts', 'retryDelayMs', 'claimId', 'leaseUntil', 'nextRetryAt', 'editionId', 'editionRevision', 'failure', 'missedSince', 'createdAt', 'updatedAt']) || !identifier(row.id) || !identifier(row.scheduleId) || !record(row.occurrence) || typeof row.status !== 'string' || !runStates.includes(row.status) || !nonnegativeInteger(row.attempts) || !positiveInteger(row.maxAttempts) || (row.maxAttempts as number) > 3 || (row.attempts as number) > (row.maxAttempts as number) || !positiveInteger(row.retryDelayMs) || (row.retryDelayMs as number) < 1000 || (row.retryDelayMs as number) > 3600000 || !utcTimestamp(row.createdAt) || !utcTimestamp(row.updatedAt) || Date.parse(row.updatedAt) < Date.parse(row.createdAt) || !['leaseUntil', 'nextRetryAt', 'missedSince'].every(key => row[key] === null || utcTimestamp(row[key])) || (row.failure !== null && (typeof row.failure !== 'string' || !failureCodes.includes(row.failure)))) return false;
+  const hasEdition = row.editionId !== null;
+  if ((hasEdition !== (row.editionRevision !== null)) || (hasEdition && (!identifier(row.editionId) || !positiveInteger(row.editionRevision)))) return false;
+  if (['CLAIMED', 'PREPARING'].includes(row.status)) return identifier(row.claimId) && row.leaseUntil !== null && Date.parse(row.leaseUntil as string) > Date.parse(row.updatedAt) && (row.attempts as number) > 0 && row.nextRetryAt === null && row.failure === null && !hasEdition;
+  if (row.claimId !== null || row.leaseUntil !== null) return false;
+  if (row.status === 'FAILED') {
+    return !hasEdition && (row.attempts as number) > 0 && ((row.attempts as number) === row.maxAttempts
+      ? row.failure === 'RETRY_EXHAUSTED' && row.nextRetryAt === null
+      : ['TRANSIENT_FAILURE', 'INTERRUPTED'].includes(row.failure as string) && row.nextRetryAt !== null);
+  }
+  if (row.nextRetryAt !== null) return false;
+  if (row.status === 'SCHEDULED') return row.attempts === 0 && row.failure === null && !hasEdition;
+  if (row.status === 'PREPARED') return (row.attempts as number) > 0 && row.failure === null && hasEdition;
+  if (row.status === 'CANCELLED') return ['PAUSED', 'CANCELLED'].includes(row.failure as string) && !hasEdition;
+  return ['MISSED_WINDOW', 'EDITION_CONFLICT', 'INELIGIBLE_CONTENT', 'RETENTION_HOLD'].includes(row.failure as string);
+}
+function schedulingHistory(schedules: RecordValue[], runs: RecordValue[], editions: RecordValue[]): boolean {
+  if (schedules.length > 32 || runs.length > 4096) return false;
+  const owners = new Map(schedules.map(row => [row.id as string, row]));
+  if (owners.size !== schedules.length || new Set(runs.map(row => row.id)).size !== runs.length) return false;
+  const keys = new Set<string>();
+  for (const run of runs) {
+    const owner = owners.get(run.scheduleId as string);
+    if (!owner || !record(run.occurrence) || !occurrence(run.occurrence, owner) || run.maxAttempts !== owner.maxAttempts || run.retryDelayMs !== owner.retryDelayMs || keys.has(run.occurrence.key as string)) return false;
+    keys.add(run.occurrence.key as string);
+    if (run.status === 'PREPARED' && !editions.some(edition => edition.id === run.editionId && edition.revision === run.editionRevision && edition.status === 'ASSEMBLING' && edition.date === (run.occurrence as RecordValue).date && edition.timezone === owner.timezone)) return false;
+  }
+  return true;
+}
+
 function orderedJSON(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(orderedJSON);
   if (record(value)) return Object.fromEntries(Object.keys(value).sort().map(key => [key, orderedJSON(value[key])]));
@@ -122,24 +175,27 @@ function orderedJSON(value: unknown): unknown {
 
 function stateFromJSON(value: unknown): State {
   if (!record(value) || !baseArrays(value)) throw Error('Invalid repository format');
-  if (value.schema !== 5 && ['editions', 'editionReviews'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
-  if (![4, 5].includes(value.schema as number) && ['drafts', 'draftReviews'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
+  if (value.schema !== 6 && ['schedules', 'preparationRuns'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
+  if (![5, 6].includes(value.schema as number) && ['editions', 'editionReviews'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
+  if (![4, 5, 6].includes(value.schema as number) && ['drafts', 'draftReviews'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
   if (value.schema === 1) {
     if (['managedSources', 'quarantine', 'provenanceDecisions', 'deletions', 'retentionReviewRequired'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
     // Legacy assertions remain history, never an implicit rights or provenance approval.
     return { ...emptyState(), retentionReviewRequired: true, sources: value.sources, revisions: value.revisions, approvals: value.approvals, audit: value.audit } as State;
   }
-  if (![2, 3, 4, 5].includes(value.schema as number) || !rows(value.managedSources, managedSource) || !rows(value.quarantine, quarantinedSource) || !rows(value.provenanceDecisions, provenanceDecision) || !rows(value.deletions, deletion)) throw Error('Invalid repository format');
+  if (![2, 3, 4, 5, 6].includes(value.schema as number) || !rows(value.managedSources, managedSource) || !rows(value.quarantine, quarantinedSource) || !rows(value.provenanceDecisions, provenanceDecision) || !rows(value.deletions, deletion)) throw Error('Invalid repository format');
   if (value.schema === 2) {
     if (Object.hasOwn(value, 'retentionReviewRequired')) throw Error('Invalid repository format');
     // Earlier deletion may have erased all linkage; require an explicit retention review.
-    return { ...value, schema: 5, retentionReviewRequired: true, drafts: [], draftReviews: [], editions: [], editionReviews: [] } as unknown as State;
+    return { ...value, schema: 6, retentionReviewRequired: true, drafts: [], draftReviews: [], editions: [], editionReviews: [], schedules: [], preparationRuns: [] } as unknown as State;
   }
   if (typeof value.retentionReviewRequired !== 'boolean') throw Error('Invalid repository format');
-  if (value.schema === 3) return { ...value, schema: 5, drafts: [], draftReviews: [], editions: [], editionReviews: [] } as unknown as State;
+  if (value.schema === 3) return { ...value, schema: 6, drafts: [], draftReviews: [], editions: [], editionReviews: [], schedules: [], preparationRuns: [] } as unknown as State;
   if (!rows(value.drafts, draft) || !rows(value.draftReviews, draftReview)) throw Error('Invalid repository format');
-  if (value.schema === 4) return { ...value, schema: 5, editions: [], editionReviews: [] } as unknown as State;
+  if (value.schema === 4) return { ...value, schema: 6, editions: [], editionReviews: [], schedules: [], preparationRuns: [] } as unknown as State;
   if (!rows(value.editions, edition) || !rows(value.editionReviews, editionReview) || !editionHistory(value.editions, value.editionReviews)) throw Error('Invalid repository format');
+  if (value.schema === 5) return { ...value, schema: 6, schedules: [], preparationRuns: [] } as unknown as State;
+  if (!rows(value.schedules, schedule) || !rows(value.preparationRuns, preparationRun) || !schedulingHistory(value.schedules, value.preparationRuns, value.editions)) throw Error('Invalid repository format');
   return value as unknown as State;
 }
 
@@ -176,7 +232,7 @@ export class JsonRepository {
       const result = change(state);
       // A result that cannot be returned must fail before any data is committed.
       const clonedResult = structuredClone(result);
-      if (state.schema !== 5) throw Error('Invalid repository format');
+      if (state.schema !== 6) throw Error('Invalid repository format');
       stateFromJSON(state);
       const serialized = JSON.stringify(orderedJSON(state));
       // Validate the actual JSON representation as well as the in-memory state.

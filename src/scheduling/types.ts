@@ -1,0 +1,7 @@
+/** Internal local preparation only. No scheduler state grants editorial authority. */
+export interface ScheduleDefinition { name: string; timezone: string; localTime: string; weekdays: number[]; enabled?: boolean; maxAttempts?: number; retryDelayMs?: number; catchUpWindowMs?: number }
+export interface Occurrence { key: string; date: string; timezone: string; localTime: string; at: string }
+export interface PreparationSchedule { id: string; name: string; timezone: string; localTime: string; weekdays: number[]; enabled: boolean; maxAttempts: number; retryDelayMs: number; catchUpWindowMs: number; createdAt: string; updatedAt: string; lastEvaluatedAt: string | null; nextOccurrence: Occurrence | null }
+export type RunStatus = 'SCHEDULED' | 'CLAIMED' | 'PREPARING' | 'PREPARED' | 'NEEDS_ATTENTION' | 'FAILED' | 'CANCELLED';
+export type FailureCode = 'MISSED_WINDOW' | 'EDITION_CONFLICT' | 'INELIGIBLE_CONTENT' | 'RETENTION_HOLD' | 'TRANSIENT_FAILURE' | 'INTERRUPTED' | 'RETRY_EXHAUSTED' | 'PAUSED' | 'CANCELLED';
+export interface PreparationRun { id: string; scheduleId: string; occurrence: Occurrence; status: RunStatus; attempts: number; maxAttempts: number; retryDelayMs: number; claimId: string | null; leaseUntil: string | null; nextRetryAt: string | null; editionId: string | null; editionRevision: number | null; failure: FailureCode | null; missedSince: string | null; createdAt: string; updatedAt: string }

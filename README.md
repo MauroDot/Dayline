@@ -128,3 +128,16 @@ The page, its CSS/JavaScript and its preview response are gated together. They a
 The view preserves the eight section order, featured placement, attribution, uncertainty/counterevidence disclosures and internal review label. It uses safe text rendering, responsive layouts, keyboard navigation, visible focus and reduced-motion styling. “Audio briefing — coming soon” is plain placeholder text. The existing homepage and official-data panels retain their defaults.
 
 Each preview request revalidates edition eligibility and returns only allowlisted display fields, without internal IDs, policy grants, reviewer assertions or audits. Browser display lasts at most 15 seconds per response and is cleared on expiry, failure, page hiding or navigation; no browser storage is used. This is a local fictional presentation, not publication or a production administration interface. See [edition design](docs/EDITION_DESIGN.md) for route details and retention limits, and the [DL-004B validation report](docs/DL-004B_VALIDATION.md) for executed checks and remaining acceptance work.
+
+## Local preparation scheduler
+
+DL-004C adds explicitly invoked scheduling under `src/scheduling`. It computes local-calendar occurrences and coordinates preparation of a new `ASSEMBLING` edition. It starts no worker, interval timer or HTTP endpoint and grants no approval/publication authority. Inspect the isolated fictional fixture with:
+
+```bash
+npm run schedule:fixture
+npm run schedule:fixture -- --apply-fixture
+```
+
+The default evaluates a temporary fixture in dry-run mode; the explicit apply flag exercises only that temporary fictional repository. Neither command accepts a production repository path or makes provider/model calls. Schedules default to disabled and use canonical IANA timezones, `HH:mm` local time and selected local weekdays (`0` Sunday through `6` Saturday). Spring-forward missing times are skipped; fall-back repeated times use the earlier instant once. Evaluation records only the latest due occurrence, marks coalesced older backlog and sends an occurrence outside its catch-up window to `NEEDS_ATTENTION`.
+
+Manual claim/begin/prepare operations use bounded attempts and expiring, fenced local claims. Pause cancels pending work; resume starts with the next future occurrence rather than replaying the paused interval. Preparation receives an explicit ordered placement list, reuses edition eligibility and never overwrites an existing manual edition. Empty assembly is allowed, while retention review holds block preparation. Runs store coordination metadata and an edition revision link, not licensed story content. See [edition design](docs/EDITION_DESIGN.md) for exact DST, retry, recovery and production limitations, and the [DL-004C validation report](docs/DL-004C_VALIDATION.md) for executed local checks.

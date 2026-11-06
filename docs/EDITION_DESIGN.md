@@ -1,6 +1,6 @@
 # Dayline — Internal daily edition design
 
-DL-004A assembles manually selected, reviewed fictional stories into a structured daily edition for internal inspection. DL-004B adds a separately gated development reader view over a temporary known-fictional fixture. Neither milestone schedules, publishes or distributes real news, calls an AI provider, generates voice, or changes the public homepage defaults. There is no production edition administration endpoint or reviewer authorization.
+DL-004A assembles manually selected, reviewed fictional stories into a structured daily edition for internal inspection. DL-004B adds a separately gated development reader view over a temporary known-fictional fixture. DL-004C adds explicitly invoked local scheduling and controlled preparation records. These features do not publish or distribute real news, call an AI provider, generate voice, or change the public homepage defaults. There is no production worker, edition administration endpoint or reviewer authorization.
 
 ## Domain and deterministic assembly
 
@@ -53,7 +53,7 @@ Creation, content edits and accepted review decisions record edition revisions. 
 
 Mutations check an expected current revision. Cooperating concurrent writers serialize through the existing local JSON lock; once one edit commits, an operation expecting the old revision is stale. Eligibility uses a fresh timestamp after acquiring the lock, so waiting cannot preserve an expired placement or review decision. Each newsroom mutation also validates and captures its injected clock once under the lock for consistent revision, approval and audit timing. Edition updates, review records and procedural audit events commit atomically rather than leaving a partially updated edition after a storage failure. A denied action may still persist necessary invalidation and a generic denial audit, with no partial requested edit. These are single-host development guarantees, not multi-host transactions or production audit protection.
 
-`READY_FOR_APPROVAL` means that an internal edition review step is ready for a separate authorization process. It grants no public publishing permission and does not alter source verification or bypass newsroom revision-specific approvals. No scheduling or publication method is implemented.
+`READY_FOR_APPROVAL` means that an internal edition review step is ready for a separate authorization process. It grants no public publishing permission and does not alter source verification or bypass newsroom revision-specific approvals. Edition review does not start a worker or publish content; the separate scheduler below can prepare only `ASSEMBLING` editions.
 
 ## Advisory presentation checks
 
@@ -82,7 +82,7 @@ Edition service reads/preview and mutations revalidate lifecycle state; plain JS
 
 ## Persistence and preview
 
-Schema 5 adds edition revisions and edition-review collections. Reading schemas 1–4 migrates in memory without rewriting the file; existing sources, stories, approvals, audits and editorial proposals are preserved. Schema 1/2 remains held for retention review; schema 3/4 preserves its existing hold. The next successful transaction persists schema 5.
+Schema 6 adds schedules and preparation runs alongside the edition revisions/reviews introduced in schema 5. Reading schemas 1–5 migrates in memory without rewriting the file; existing sources, stories, approvals, audits, editorial proposals and editions are preserved. Schema 1/2 remains held for retention review; schema 3/4/5 preserves its existing hold. The next successful transaction persists schema 6.
 
 ```bash
 npm run edition:fixture
@@ -123,6 +123,66 @@ Story text is rendered as text, never trusted HTML. The page and responses use n
 
 The local-only gate is not authentication or production authorization. A previously delivered response can be copied outside the application, and browser timers are not secure erasure. The existing limitations around screenshots, backups, external copies, crash leftovers and filesystem access remain. No unauthenticated production administration, live news feed or public publication has been added.
 
+## Controlled local scheduling
+
+`SchedulerService` is invoked explicitly by trusted local code or the fixture CLI. It has no HTTP route, automatic worker, uncontrolled timer or production scheduling infrastructure. Its records coordinate preparation; no scheduler action approves stories, moves an edition to readiness, publishes, notifies, calls a model/provider, generates audio or deploys.
+
+### Calendar and configuration
+
+A schedule stores its ID/name, canonical IANA timezone, `HH:mm` local preparation time, selected weekdays, enabled state, bounded retry/catch-up settings, last evaluation and next occurrence. `UTC` and supported named zones are accepted; numeric offset literals and malformed definitions are rejected. Weekdays use local calendar values, `0` Sunday through `6` Saturday. Daily scheduling explicitly selects all seven days. Schedules default to disabled and their definition is immutable through the service except pause/resume; progress fields are managed by scheduler operations. The local repository is bounded to 32 schedules and 4,096 run records; capacity errors do not silently delete history. Calendar searches inspect at most 16 local dates in either direction.
+
+Occurrences are calculated in the named local calendar, not by adding a fixed 24-hour duration. The DST policy is:
+
+- **Spring gap: skip.** A local minute that does not exist has no occurrence that date; it is not shifted into another hour.
+- **Autumn fold: earliest.** A repeated local minute maps only to its first chronological instant. The second occurrence is not another run.
+- **Local weekday/date.** Day filters and edition dates use the schedule's timezone, including across UTC midnight and offset changes.
+
+For example, a 02:30 `America/Chicago` schedule skips the missing minute on the spring-forward date; a repeated 01:30 in autumn runs at its earlier instant once. The canonical occurrence identity ties together schedule/date/timezone/local time, independent of a later evaluation call.
+
+### Evaluation, backlog and pause
+
+Evaluation defaults to dry run and creates at most the latest due occurrence for each enabled schedule in its returned snapshot. Committed evaluation requires `dryRun: false`; it does not prepare an edition. A new enabled schedule considers occurrences from creation time onward, including an occurrence exactly at that instant, rather than backfilling earlier dates. Older unevaluated calendar backlog is coalesced into the run's `missedSince` procedural marker so skipped history is visible. If the latest due occurrence is itself older than the catch-up window, its run becomes `NEEDS_ATTENTION` with `MISSED_WINDOW`, rather than being prepared automatically. Repeated or concurrent evaluation cannot create another run for the same schedule/occurrence identity.
+
+The catch-up window defaults to 15 minutes and is bounded from one second to 24 hours. It is checked during evaluation and again when admitting a claim. A timely claim may finish after that window while its lease remains valid and preparation rights still pass revalidation. Pausing cancels pending claims and retryable failures; terminal retry exhaustion is preserved. Resuming a paused schedule computes the next strictly future occurrence and does not replay the paused interval. Prepared editions are not undone by a pause; existing editorial and retention rules still govern them.
+
+### Claims, retry and recovery
+
+| Control | Local policy |
+| --- | --- |
+| Attempts | Defaults to three; configurable from one to three attempts per run. |
+| Retry delay | Defaults to 60 seconds; configurable from one second to one hour. |
+| Claim lease | Defaults to 30 seconds; configurable from one second to five minutes. |
+| Claim identity | Random internal fencing ID, checked with lease/state for each claimed action. |
+
+Explicit operations move a due run through `SCHEDULED → CLAIMED → PREPARING → PREPARED`. Claiming consumes an attempt. A transient failure becomes `FAILED` with a delayed retry; terminal exhaustion remains `FAILED/RETRY_EXHAUSTED` with no retry time, and pause/cancel cannot erase that result. Interrupted/expired claims are recovered explicitly, with the old claim invalidated before any retry. Stale holders cannot begin, prepare or fail a newer claim. No sleeping worker or retry timer is started; another explicit invocation must perform recovery or an eligible retry. The `execute` convenience method performs claim/begin/prepare for one explicitly identified run; it does not start a queue consumer.
+
+| Current run state | Permitted progress |
+| --- | --- |
+| `SCHEDULED` | Claim while enabled/due/in-window, or cancel; late claim moves it to `NEEDS_ATTENTION/MISSED_WINDOW`. |
+| `CLAIMED` | Begin, record transient failure, cancel/pause, or recover after lease expiry. |
+| `PREPARING` | Prepare, record transient failure, cancel/pause, or recover after lease expiry. |
+| Retryable `FAILED` | Reclaim after the delay while enabled/in-window, or cancel/pause. |
+| Exhausted `FAILED` | Terminal `RETRY_EXHAUSTED`; no new claim. |
+| `PREPARED` | Retain its result, or reconcile to attention if its bound edition becomes ineligible. |
+| `NEEDS_ATTENTION` / `CANCELLED` | No automatic retry or reopening of that occurrence. |
+
+These are local coordination checks under the repository lock, with fresh clock validation after lock acquisition and backwards clock movement rejected. A claim ID is not an authenticated reviewer identity, production publishing token or distributed-lock guarantee. Failures store enumerated safe codes rather than raw exceptions, secrets or source content. Audit and run/edition updates use the same atomic local transaction.
+
+### Controlled preparation and retention
+
+Preparation receives a complete explicit ordered `PlacementInput` list at invocation time. The schedule/run does not save that list, headlines, summaries, source text or evidence payload. The existing edition helper revalidates exact latest newsroom approvals, managed fictional rights/provenance, source retention, redaction and quarantine before creating a new `ASSEMBLING` edition. It does not infer AI rights, choose stories or silently alter ordering. An empty edition is permitted; a repository retention-review hold blocks preparation even when the list is empty.
+
+An existing edition for the occurrence's date/canonical timezone produces `NEEDS_ATTENTION/EDITION_CONFLICT`, including conflicts between separate schedules targeting the same edition date/zone. A manual edition is never overwritten or adopted silently. Success binds the run to its exact created edition ID/revision. If that bound revision later disappears or is invalidated, reconciliation moves the run to `NEEDS_ATTENTION/INELIGIBLE_CONTENT`; no stale prepared result grants readiness. Existing review history and human approval boundaries remain independent of scheduler status.
+
+### Fictional inspection
+
+```bash
+npm run schedule:fixture
+npm run schedule:fixture -- --apply-fixture
+```
+
+The default command seeds an isolated temporary fictional fixture and evaluates a copied snapshot without committing scheduler changes. `--apply-fixture` exercises bounded explicit operations only against that temporary fixture. Neither accepts a user repository path or live mode, and temporary files are removed afterwards. The fixture has no provider/model traffic, production timer, notification or publication operation. Dry-run output is an inspection result, not evidence that an edition was prepared or published.
+
 ## Validation and production requirements
 
 ```bash
@@ -133,8 +193,8 @@ python -m unittest discover -s tests/browser -v
 git diff --check
 ```
 
-`npm run check` includes TypeScript, public-script syntax and deterministic backend/domain checks. Browser checks require Python Playwright and Chromium; see README for `CHROMIUM_PATH`. The [DL-004B validation report](DL-004B_VALIDATION.md) records executed checks and remaining acceptance work. New viewport, keyboard, reduced-motion, contrast/audit and 200%/400% zoom coverage must be reported only when executed; automated checks do not replace physical browser zoom or assistive-technology acceptance.
+`npm run check` includes TypeScript, public-script syntax and deterministic backend/domain checks. Browser checks require Python Playwright and Chromium; see README for `CHROMIUM_PATH`. The [DL-004C validation report](DL-004C_VALIDATION.md) records executed calendar, scheduling, recovery and regression checks; the [DL-004B report](DL-004B_VALIDATION.md) records the earlier presentation baseline. New viewport, keyboard, reduced-motion, contrast/audit and 200%/400% zoom coverage must be reported only when executed; automated checks do not replace physical browser zoom or assistive-technology acceptance.
 
-The owner confirmed that Foundation 001's development milestone was accepted and merged previously. Remaining checks concern this new presentation and future production use; they do not reverse that historical acceptance. No new physical acceptance, exact prototype parity, live-source compatibility or production readiness is established by the fictional view alone.
+The owner confirmed that Foundation 001's development milestone was accepted and merged previously. Remaining checks concern later development changes and future production use; they do not reverse that historical acceptance. Fictional previews and scheduling fixtures alone establish no new physical acceptance, exact prototype parity, live-source compatibility or production readiness.
 
-Production work remains blocked pending authenticated reviewer identities and permissions, actual provider/derived-content contracts, durable transactional persistence, retention enforcement for all copies, operational monitoring/recovery, independent security/editorial review and explicit publication authorization. Scheduling, paid AI, narration, Stripe and public distribution are outside this milestone.
+Production work remains blocked pending authenticated reviewer identities and permissions, actual provider/derived-content contracts, durable transactional persistence, retention enforcement for all copies, operational monitoring/recovery, independent security/editorial review and explicit publication authorization. Real worker infrastructure, paid AI, narration, Stripe and public distribution are outside this milestone.
