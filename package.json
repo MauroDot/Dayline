@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "ingest:fixture": "node --experimental-strip-types src/ingestion/runner.ts",
     "retention:fixture": "node --experimental-strip-types src/ingestion/cleanup-runner.ts",
-    "edition:fixture": "node --experimental-strip-types src/editions/runner.ts"
+    "edition:fixture": "node --experimental-strip-types src/editions/runner.ts",
+    "schedule:fixture": "node --experimental-strip-types src/scheduling/runner.ts"
   },
   "devDependencies": {
     "@types/node": "22.19.15",

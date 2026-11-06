@@ -63,6 +63,17 @@ function sectionsFor(state: State, inputs: PlacementInput[], at: string): Pick<A
   return {sections, suggestions};
 }
 
+/** Shared atomic assembly boundary; creates no review or publication authority. */
+export function createEditionInState(state: State, input: {date: string; timezone: string; placements: PlacementInput[]}, at: string): ActiveEdition {
+  timestamp(at);
+  if (!input || typeof input !== 'object' || Object.keys(input).some(key => !['date','timezone','placements'].includes(key))) throw new EditionError('INVALID_EDITION_INPUT');
+  const timezone = dateScope(input.date, input.timezone);
+  if (state.editions.some(row => row.date === input.date && row.timezone === timezone)) throw new EditionError('EDITION_DATE_ALREADY_EXISTS');
+  const contents = sectionsFor(state, input.placements, at);
+  const edition: ActiveEdition = { id:randomUUID(), date:input.date, timezone, revision:1, status:'ASSEMBLING', createdAt:at, updatedAt:at, ...contents };
+  state.editions.push(edition); audit(state, 'EDITION_CREATED', at); return edition;
+}
+
 /** Trusted local fictional workflow only; reviewer labels are unauthenticated assertions. */
 export class EditionService {
   private readonly repository: JsonRepository;
@@ -89,12 +100,7 @@ export class EditionService {
   async create(input: {date: string; timezone: string; placements: PlacementInput[]}, actorAssertion: string): Promise<ActiveEdition> {
     return this.transact((state, at) => {
       assertion(actorAssertion);
-      if (!input || typeof input !== 'object' || Object.keys(input).some(key => !['date','timezone','placements'].includes(key))) throw new EditionError('INVALID_EDITION_INPUT');
-      const timezone = dateScope(input.date, input.timezone);
-      if (state.editions.some(row => row.date === input.date && row.timezone === timezone)) throw new EditionError('EDITION_DATE_ALREADY_EXISTS');
-      const contents = sectionsFor(state, input.placements, at);
-      const edition: ActiveEdition = { id:randomUUID(), date:input.date, timezone, revision:1, status:'ASSEMBLING', createdAt:at, updatedAt:at, ...contents };
-      state.editions.push(edition); audit(state, 'EDITION_CREATED', at); return edition;
+      return createEditionInState(state, input, at);
     });
   }
   async edit(id: string, expectedRevision: number, placements: PlacementInput[], actorAssertion: string): Promise<ActiveEdition> {

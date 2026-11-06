@@ -76,9 +76,17 @@
 - [x] DL-004B local validation on Node 22.16.0: TypeScript, 304/304 backend/domain/security tests and 18/18 Chromium regressions passed; targeted axe checks found no violations. See [validation report](DL-004B_VALIDATION.md).
 - [ ] Obtain new physical browser/assistive-technology acceptance and separately authorize any production work.
 
+## DL-004C — Controlled local edition scheduling
+- [x] Named-timezone daily/weekday calendar with explicit DST gap/fold policy and unique occurrence identity.
+- [x] Disabled-by-default schedules, bounded latest-only catch-up, pause/resume and cancellation.
+- [x] Atomic local claims, expiring fencing, bounded retry/recovery and sanitized run audit metadata.
+- [x] New `ASSEMBLING` edition preparation through existing eligibility; preserve manual editions and editorial approval boundaries.
+- [x] Temporary fictional dry-run/apply inspection with no background worker or public endpoint.
+- [x] DL-004C local validation on Node 22.16.0: TypeScript, 380/380 backend/domain/security tests and 18/18 Chromium regressions passed; see [validation report](DL-004C_VALIDATION.md).
+
 ## DL-004 — Remaining edition operations
 - [ ] Authenticated production review and explicitly authorized publication with durable storage.
-- [ ] Versioned 06:00 America/Chicago scheduling, monitoring and retries.
+- [ ] Separately authorized 06:00 America/Chicago production worker infrastructure, monitoring and recovery.
 - [ ] Keep official-data refresh schedules independent from edition publication.
 - [ ] Demonstrate idempotent publishing, recovery and graceful degraded operation before public release.
 
