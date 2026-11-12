@@ -13,10 +13,13 @@ import type { ScheduleDefinition } from '../scheduling/types.ts';
 import type { AccessControl } from './service.ts';
 import type { Permission, Principal, ResourceKind, SecurityCode } from './types.ts';
 import { SecurityError } from './verifier.ts';
+import { assertResourcePolicy, editionSlot, scheduleRevision, runRevision, type ResourcePolicy, type ResourceTarget } from './resources.ts';
 
 interface Resource { kind: ResourceKind; id: string; version: number | null }
 interface Operation {
   permission: Permission;
+  targets?: (state: State) => ResourceTarget[];
+  scopeCheck?: (state: State) => void;
   check?: (state: State) => void;
   resources: (result: unknown) => Resource[];
 }
@@ -81,6 +84,16 @@ function validateStoryInput(input: unknown): void {
       && strings(evidence.support) && strings(evidence.contradict) && strings(evidence.reviewerDecisions))) throw new SecurityError('DOMAIN_REJECTED');
 }
 
+function placementTargets(placements: PlacementInput[]): ResourceTarget[] {
+  if (!Array.isArray(placements) || placements.length > 100 || placements.some(row => !row || typeof row.storyId !== 'string')) throw new SecurityError('DOMAIN_REJECTED');
+  return placements.map(row => ({ kind: 'STORY', id: row.storyId }));
+}
+function editionTargets(state: State, id: string): ResourceTarget[] {
+  const edition = state.editions.filter(row => row.id === id).at(-1);
+  return [{ kind: 'EDITION', id }, ...(edition && edition.status !== 'INVALIDATED'
+    ? edition.sections.flatMap(section => section.placements.map(row => ({ kind: 'STORY' as const, id: row.storyId }))) : [])];
+}
+
 /** Private repository adapter: legacy domain callbacks never receive an unauthenticated transaction. */
 class GuardedRepository extends JsonRepository {
   failure: SecurityCode | null = null;
@@ -88,8 +101,9 @@ class GuardedRepository extends JsonRepository {
   private readonly access: AccessControl;
   private readonly credential: unknown;
   private readonly operation: Operation;
-  constructor(base: JsonRepository, access: AccessControl, credential: unknown, operation: Operation) {
-    super(base.file); this.base = base; this.access = access; this.credential = credential; this.operation = operation;
+  private readonly resourcePolicy?: ResourcePolicy;
+  constructor(base: JsonRepository, access: AccessControl, credential: unknown, operation: Operation, resourcePolicy?: ResourcePolicy) {
+    super(base.file); this.base = base; this.access = access; this.credential = credential; this.operation = operation; this.resourcePolicy = resourcePolicy;
   }
   override async read(): Promise<State> { throw new SecurityError('DOMAIN_REJECTED'); }
   override async transact<T>(change: (state: State) => T): Promise<T> {
@@ -99,12 +113,19 @@ class GuardedRepository extends JsonRepository {
     const permission = this.operation.permission;
     let principal: Principal | null = null;
     let commitAuthorized = false;
+    let boundTargets: ResourceTarget[] = [];
     let result: Result<T>;
     try {
       result = await this.base.transactGuarded(state => {
         const at = this.access.now();
         try {
           principal = this.access.authorizeInState(state, this.credential, permission, at);
+          if (this.resourcePolicy) {
+            if (!this.operation.targets) throw new SecurityError('PERMISSION_DENIED');
+            boundTargets = structuredClone(this.operation.targets(state));
+            assertResourcePolicy(this.resourcePolicy, principal, permission, boundTargets, state);
+            this.operation.scopeCheck?.(state);
+          }
           // Only authenticated callers may trigger these known retention scrubs.
           // Keep them even when the requested domain mutation is rejected.
           commitAuthorized = true;
@@ -130,6 +151,7 @@ class GuardedRepository extends JsonRepository {
         const final = this.access.authorizeInState(state, this.credential, permission, this.access.now());
         if (final.identityId !== principal.identityId || final.identityRevision !== principal.identityRevision
           || final.sessionRef !== principal.sessionRef || final.sessionId !== principal.sessionId) throw new SecurityError('PERMISSION_DENIED');
+        if (this.resourcePolicy) assertResourcePolicy(this.resourcePolicy, final, permission, boundTargets, state);
         return additionalGuard?.(state);
       });
     } catch (error) {
@@ -149,56 +171,77 @@ class GuardedRepository extends JsonRepository {
 export class AuthenticatedEditorial {
   private readonly repository: JsonRepository;
   private readonly access: AccessControl;
-  constructor(repository: JsonRepository, access: AccessControl) {
+  private readonly resourcePolicy?: ResourcePolicy;
+  constructor(repository: JsonRepository, access: AccessControl, options: { resourcePolicy?: ResourcePolicy } = {}) {
     if (resolve(repository.file) !== access.repositoryFile) throw new SecurityError('STORAGE_UNAVAILABLE');
-    this.repository = repository; this.access = access;
+    if (Object.hasOwn(options, 'resourcePolicy') && (!options.resourcePolicy || typeof options.resourcePolicy.authorize !== 'function')) throw new SecurityError('PERMISSION_DENIED');
+    this.repository = repository; this.access = access; this.resourcePolicy = options.resourcePolicy;
   }
   private protected(credential: unknown, operation: Operation): GuardedRepository {
-    return new GuardedRepository(this.repository, this.access, credential, operation);
+    return new GuardedRepository(this.repository, this.access, credential, operation, this.resourcePolicy);
   }
   private clock = () => this.access.now();
+  private input<T>(value: T): T { return this.resourcePolicy ? structuredClone(value) : value; }
 
   async createStory(credential: unknown, story: Omit<Story, 'status' | 'version'>) {
-    return new Newsroom(this.protected(credential, { permission: 'STORY_CREATE', check: () => validateStoryInput(story), resources: target('STORY') }), { clock: this.clock }).create(story, 'authenticated-action');
+    story = this.input(story);
+    return new Newsroom(this.protected(credential, { permission: 'STORY_CREATE', targets: () => [{ kind: 'STORY', id: story.id }], check: () => validateStoryInput(story), resources: target('STORY') }), { clock: this.clock }).create(story, 'authenticated-action');
   }
   async editStory(credential: unknown, id: string, version: number, patch: Parameters<Newsroom['edit']>[1]) {
-    return new Newsroom(this.protected(credential, { permission: 'STORY_EDIT', check: expected('STORY', id, version), resources: target('STORY') }), { clock: this.clock }).edit(id, patch, 'authenticated-action');
+    patch = this.input(patch);
+    return new Newsroom(this.protected(credential, { permission: 'STORY_EDIT', targets: () => [{ kind: 'STORY', id }], check: expected('STORY', id, version), resources: target('STORY') }), { clock: this.clock }).edit(id, patch, 'authenticated-action');
   }
   async approveStory(credential: unknown, id: string, version: number) {
-    return new Newsroom(this.protected(credential, { permission: 'STORY_APPROVE', check: expected('STORY', id, version), resources: target('STORY') }), { clock: this.clock }).transition(id, 'APPROVED', 'authenticated-action');
+    return new Newsroom(this.protected(credential, { permission: 'STORY_APPROVE', targets: () => [{ kind: 'STORY', id }], check: expected('STORY', id, version), resources: target('STORY') }), { clock: this.clock }).transition(id, 'APPROVED', 'authenticated-action');
   }
   async reviewStory(credential: unknown, id: string, version: number, next: Story['status']) {
     const check = expected('STORY', id, version);
-    return new Newsroom(this.protected(credential, { permission: 'STORY_REVIEW', check: state => {
+    return new Newsroom(this.protected(credential, { permission: 'STORY_REVIEW', targets: () => [{ kind: 'STORY', id }], check: state => {
       check(state);
       if (!['CLUSTERED', 'DRAFT', 'NEEDS_REVIEW', 'ON_HOLD', 'REJECTED', 'CORRECTION_REQUIRED'].includes(next)) throw new SecurityError('DOMAIN_REJECTED');
     }, resources: target('STORY') }), { clock: this.clock }).transition(id, next, 'authenticated-action');
   }
   async reviewDraft(credential: unknown, id: string, version: number, next: DraftStatus) {
     const permission = next === 'READY_FOR_APPROVAL' ? 'DRAFT_READY' : 'DRAFT_REVIEW';
-    return new EditorialService(this.protected(credential, { permission, check: expected('DRAFT', id, version), resources: target('DRAFT') }), { clock: this.clock }).review(id, version, next, 'authenticated-action');
+    return new EditorialService(this.protected(credential, { permission, targets: () => [{ kind: 'DRAFT', id }], check: expected('DRAFT', id, version), resources: target('DRAFT') }), { clock: this.clock }).review(id, version, next, 'authenticated-action');
   }
   async assembleEdition(credential: unknown, input: Parameters<EditionService['create']>[0]) {
-    return new EditionService(this.protected(credential, { permission: 'EDITION_ASSEMBLE', resources: target('EDITION') }), { clock: this.clock }).create(input, 'authenticated-action');
+    input = this.input(input);
+    return new EditionService(this.protected(credential, { permission: 'EDITION_ASSEMBLE', targets: () => [{ kind: 'EDITION', id: editionSlot(input.date, input.timezone) }, ...placementTargets(input.placements)], resources: target('EDITION') }), { clock: this.clock }).create(input, 'authenticated-action');
   }
   async editEdition(credential: unknown, id: string, revision: number, placements: PlacementInput[]) {
-    return new EditionService(this.protected(credential, { permission: 'EDITION_ASSEMBLE', check: expected('EDITION', id, revision, true), resources: target('EDITION') }), { clock: this.clock }).edit(id, revision, placements, 'authenticated-action');
+    placements = this.input(placements);
+    return new EditionService(this.protected(credential, { permission: 'EDITION_ASSEMBLE', targets: () => [{ kind: 'EDITION', id }, ...placementTargets(placements)], check: expected('EDITION', id, revision, true), resources: target('EDITION') }), { clock: this.clock }).edit(id, revision, placements, 'authenticated-action');
   }
   async reviewEdition(credential: unknown, id: string, revision: number, next: EditionStatus) {
     const permission = next === 'READY_FOR_APPROVAL' ? 'EDITION_READY' : 'EDITION_REVIEW';
-    return new EditionService(this.protected(credential, { permission, check: expected('EDITION', id, revision), resources: target('EDITION') }), { clock: this.clock }).review(id, revision, next, 'authenticated-action');
+    return new EditionService(this.protected(credential, { permission, targets: state => editionTargets(state, id), check: expected('EDITION', id, revision), resources: target('EDITION') }), { clock: this.clock }).review(id, revision, next, 'authenticated-action');
   }
-  private async scheduler<T>(credential: unknown, permission: Permission, resources: Operation['resources'], work: (service: SchedulerService) => Promise<T>): Promise<T> {
-    const repository = this.protected(credential, { permission, resources });
+  private async scheduler<T>(credential: unknown, permission: Permission, resources: Operation['resources'], work: (service: SchedulerService) => Promise<T>, scope?: Pick<Operation, 'targets' | 'scopeCheck'>): Promise<T> {
+    const repository = this.protected(credential, { permission, resources, ...scope });
     try { return await work(new SchedulerService(repository, { clock: this.clock })); }
     catch { throw new SecurityError(repository.failure ?? 'DOMAIN_REJECTED'); }
   }
   async createSchedule(credential: unknown, definition: ScheduleDefinition) {
     return this.scheduler(credential, 'SCHEDULE_CONFIGURE', target('SCHEDULE'), service => service.create(definition));
   }
-  async pauseSchedule(credential: unknown, id: string) { return this.scheduler(credential, 'SCHEDULE_CONFIGURE', target('SCHEDULE'), service => service.pause(id)); }
+  async pauseSchedule(credential: unknown, id: string, revision?: string) {
+    return this.scheduler(credential, 'SCHEDULE_CONFIGURE', target('SCHEDULE'), service => service.pause(id), {
+      targets: () => [{ kind: 'SCHEDULE', id }], scopeCheck: state => {
+        const schedule = state.schedules.find(row => row.id === id);
+        if (!schedule || revision !== scheduleRevision(schedule)) throw new SecurityError('STALE_TARGET');
+      },
+    });
+  }
   async resumeSchedule(credential: unknown, id: string) { return this.scheduler(credential, 'SCHEDULE_CONFIGURE', target('SCHEDULE'), service => service.resume(id)); }
-  async claimRun(credential: unknown, id: string) { return this.scheduler(credential, 'SCHEDULE_EXECUTE', target('RUN'), service => service.claim(id)); }
+  async claimRun(credential: unknown, id: string, revision?: string) {
+    return this.scheduler(credential, 'SCHEDULE_EXECUTE', target('RUN'), service => service.claim(id), {
+      targets: () => [{ kind: 'RUN', id }], scopeCheck: state => {
+        const run = state.preparationRuns.find(row => row.id === id);
+        if (!run || revision !== runRevision(run)) throw new SecurityError('STALE_TARGET');
+      },
+    });
+  }
   async beginRun(credential: unknown, id: string, claimId: string) { return this.scheduler(credential, 'SCHEDULE_EXECUTE', target('RUN'), service => service.begin(id, claimId)); }
   async prepareRun(credential: unknown, id: string, claimId: string, placements: PlacementInput[] = []) { return this.scheduler(credential, 'SCHEDULE_EXECUTE', target('RUN'), service => service.prepare(id, claimId, placements)); }
   async failRun(credential: unknown, id: string, claimId: string) { return this.scheduler(credential, 'SCHEDULE_EXECUTE', target('RUN'), service => service.fail(id, claimId)); }
