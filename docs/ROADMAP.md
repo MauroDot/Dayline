@@ -90,7 +90,16 @@
 - [ ] Keep official-data refresh schedules independent from edition publication.
 - [ ] Demonstrate idempotent publishing, recovery and graceful degraded operation before public release.
 
-## DL-005A — Voice and premium feasibility
+## DL-005A — Editorial authentication and access control foundation
+- [x] Provider-independent trusted verifier boundary with synthetic signed credentials; no production identity provider or login route.
+- [x] Explicit deny-by-default role/permission matrix separating access administration from editorial authority.
+- [x] Current-session/identity checks, role revocation, credential-version rotation and bounded safe security metadata.
+- [x] Guarded internal editorial adapters with action-time/precommit checks and separate revision-bound authenticated receipts.
+- [x] Schema-7 migration preserves historical unauthenticated assertions and existing retention holds without backfill.
+- [x] DL-005A local validation on Node 22.16.0: TypeScript, 459/459 backend/domain/security tests and 18/18 Chromium regressions passed; see [validation report](DL-005A_VALIDATION.md).
+- [ ] Review real identity trust, production authorization/storage and operations before any live accounts or public administration.
+
+## Future voice and premium feasibility
 - [ ] Verify current OpenAI speech endpoints, voices, model lifecycles and rates.
 - [ ] Measure actual cost of short and long scripts with realistic pronunciation and retries.
 - [ ] Produce disclosed synthetic audio using approved scripts; support transcript fallback.

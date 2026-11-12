@@ -5,6 +5,7 @@ import { emptyState, type State } from './model.ts';
 import { sectionIds } from '../editions/types.ts';
 import { occurrenceOn, validateDefinition } from '../scheduling/calendar.ts';
 import type { PreparationSchedule, ScheduleDefinition } from '../scheduling/types.ts';
+import { roles, permissions } from '../security/types.ts';
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): value is RecordValue => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -167,6 +168,76 @@ function schedulingHistory(schedules: RecordValue[], runs: RecordValue[], editio
   return true;
 }
 
+function securityKeys(row: RecordValue, keys: readonly string[]): boolean {
+  return [Object.prototype, null].includes(Object.getPrototypeOf(row)) && Reflect.ownKeys(row).length === keys.length
+    && keys.every(key => Object.hasOwn(row, key))
+    && Object.values(Object.getOwnPropertyDescriptors(row)).every(descriptor => descriptor.enumerable && Object.hasOwn(descriptor, 'value'));
+}
+function securityList(value: unknown, maximum: number): value is unknown[] {
+  return Array.isArray(value) && Object.getPrototypeOf(value) === Array.prototype && value.length <= maximum
+    && Reflect.ownKeys(value).length === value.length + 1
+    && Reflect.ownKeys(value).every(key => key === 'length' || (typeof key === 'string' && /^(0|[1-9]\d*)$/.test(key) && Number(key) < value.length))
+    && Object.values(Object.getOwnPropertyDescriptors(value)).every(descriptor => Object.hasOwn(descriptor, 'value'));
+}
+const securityOpaque = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$/.test(value);
+function issuerReference(value: unknown, maximum = 256): value is string {
+  if (typeof value !== 'string' || value.length > maximum || /[\s?#]/.test(value)) return false;
+  if (/^urn:[A-Za-z0-9][A-Za-z0-9-]{0,31}:[A-Za-z0-9][A-Za-z0-9._~:/%-]*$/.test(value)) return true;
+  try { const url = new URL(value); return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash; }
+  catch { return false; }
+}
+const audienceReference = (value: unknown): boolean => typeof value === 'string' && value.length <= 128 && (/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(value) || issuerReference(value, 128));
+function identityRecord(row: RecordValue): boolean {
+  return securityKeys(row, ['id', 'status', 'roles', 'provider', 'revision', 'credentialVersion', 'credentialsRotatedAt', 'createdAt', 'updatedAt'])
+    && securityOpaque(row.id) && ['ACTIVE', 'DISABLED'].includes(row.status as string)
+    && securityList(row.roles, roles.length) && row.roles.every(role => typeof role === 'string' && (roles as readonly string[]).includes(role)) && new Set(row.roles).size === row.roles.length
+    && record(row.provider) && securityKeys(row.provider, ['issuer', 'subject']) && issuerReference(row.provider.issuer) && securityOpaque(row.provider.subject)
+    && positiveInteger(row.revision) && positiveInteger(row.credentialVersion)
+    && utcTimestamp(row.createdAt) && utcTimestamp(row.updatedAt) && Date.parse(row.updatedAt) >= Date.parse(row.createdAt)
+    && (row.credentialsRotatedAt === null || (utcTimestamp(row.credentialsRotatedAt) && Date.parse(row.credentialsRotatedAt) >= Date.parse(row.createdAt) && Date.parse(row.credentialsRotatedAt) <= Date.parse(row.updatedAt)));
+}
+function sessionRecord(row: RecordValue): boolean {
+  return securityKeys(row, ['id', 'auditRef', 'userId', 'issuer', 'audience', 'keyId', 'credentialVersion', 'authenticatedAt', 'notBefore', 'expiresAt', 'revokedAt'])
+    && ['id', 'auditRef', 'userId'].every(key => securityOpaque(row[key])) && typeof row.keyId === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(row.keyId) && issuerReference(row.issuer) && audienceReference(row.audience) && positiveInteger(row.credentialVersion)
+    && utcTimestamp(row.authenticatedAt) && utcTimestamp(row.notBefore) && utcTimestamp(row.expiresAt)
+    && Date.parse(row.authenticatedAt) <= Date.parse(row.notBefore) && Date.parse(row.notBefore) < Date.parse(row.expiresAt)
+    && (row.revokedAt === null || (utcTimestamp(row.revokedAt) && Date.parse(row.revokedAt) >= Date.parse(row.authenticatedAt)));
+}
+const securityCategories = ['AUTH_SUCCESS', 'AUTH_FAILURE', 'AUTHZ_DENIED', 'ROLE_CHANGED', 'SESSION_REVOKED', 'IDENTITY_STATUS_CHANGED', 'CREDENTIALS_ROTATED', 'PROTECTED_ACTION', 'IDENTITY_CREATED'];
+const securityCodes = ['SUCCESS', 'INVALID_CREDENTIAL', 'INVALID_SESSION', 'SESSION_EXPIRED', 'SESSION_FUTURE', 'SESSION_REVOKED', 'IDENTITY_DISABLED', 'PERMISSION_DENIED', 'STALE_TARGET', 'DOMAIN_REJECTED', 'STORAGE_UNAVAILABLE'];
+const permission = (value: unknown): boolean => typeof value === 'string' && (permissions as readonly string[]).includes(value);
+function securityEvent(row: RecordValue): boolean {
+  return securityKeys(row, ['id', 'at', 'category', 'code', 'userRef', 'sessionRef', 'subjectRef', 'permission'])
+    && securityOpaque(row.id) && utcTimestamp(row.at) && securityCategories.includes(row.category as string) && securityCodes.includes(row.code as string)
+    && ['userRef', 'sessionRef', 'subjectRef'].every(key => row[key] === null || securityOpaque(row[key])) && (row.permission === null || permission(row.permission));
+}
+function authenticatedAction(row: RecordValue): boolean {
+  return securityKeys(row, ['id', 'actorId', 'identityRevision', 'sessionRef', 'permission', 'resourceKind', 'resourceId', 'resourceVersion', 'at'])
+    && ['id', 'actorId', 'sessionRef'].every(key => securityOpaque(row[key])) && positiveInteger(row.identityRevision) && permission(row.permission)
+    && ['STORY', 'DRAFT', 'EDITION', 'SCHEDULE', 'RUN', 'IDENTITY', 'SESSION'].includes(row.resourceKind as string) && text(row.resourceId, 256)
+    && (row.resourceVersion === null || positiveInteger(row.resourceVersion)) && utcTimestamp(row.at);
+}
+function securityRows(value: unknown, maximum: number, valid: (row: RecordValue) => boolean): value is RecordValue[] {
+  return securityList(value, maximum) && value.every(row => record(row) && valid(row));
+}
+function securityHistory(identities: RecordValue[], sessions: RecordValue[], events: RecordValue[], actions: RecordValue[]): boolean {
+  if ([identities, sessions, events, actions].some(rows => new Set(rows.map(row => row.id)).size !== rows.length)) return false;
+  if (new Set(identities.map(row => JSON.stringify([(row.provider as RecordValue).issuer, (row.provider as RecordValue).subject]))).size !== identities.length || new Set(sessions.map(row => row.auditRef)).size !== sessions.length) return false;
+  const people = new Map(identities.map(row => [row.id, row])), references = new Map(sessions.map(row => [row.auditRef, row]));
+  for (const session of sessions) {
+    const owner = people.get(session.userId);
+    if (owner && ((owner.provider as RecordValue).issuer !== session.issuer || (session.credentialVersion as number) > (owner.credentialVersion as number))) return false;
+  }
+  for (const event of events) {
+    const session = references.get(event.sessionRef);
+    if (session && event.userRef !== null && session.userId !== event.userRef) return false;
+  }
+  return actions.every(action => {
+    const actor = people.get(action.actorId), session = references.get(action.sessionRef);
+    return (!actor || (action.identityRevision as number) <= (actor.revision as number)) && (!session || session.userId === action.actorId);
+  });
+}
+
 function orderedJSON(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(orderedJSON);
   if (record(value)) return Object.fromEntries(Object.keys(value).sort().map(key => [key, orderedJSON(value[key])]));
@@ -175,27 +246,30 @@ function orderedJSON(value: unknown): unknown {
 
 function stateFromJSON(value: unknown): State {
   if (!record(value) || !baseArrays(value)) throw Error('Invalid repository format');
-  if (value.schema !== 6 && ['schedules', 'preparationRuns'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
-  if (![5, 6].includes(value.schema as number) && ['editions', 'editionReviews'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
-  if (![4, 5, 6].includes(value.schema as number) && ['drafts', 'draftReviews'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
+  if (value.schema !== 7 && ['identities', 'sessions', 'securityAudit', 'authenticatedActions'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
+  if (![6, 7].includes(value.schema as number) && ['schedules', 'preparationRuns'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
+  if (![5, 6, 7].includes(value.schema as number) && ['editions', 'editionReviews'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
+  if (![4, 5, 6, 7].includes(value.schema as number) && ['drafts', 'draftReviews'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
   if (value.schema === 1) {
     if (['managedSources', 'quarantine', 'provenanceDecisions', 'deletions', 'retentionReviewRequired'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
     // Legacy assertions remain history, never an implicit rights or provenance approval.
     return { ...emptyState(), retentionReviewRequired: true, sources: value.sources, revisions: value.revisions, approvals: value.approvals, audit: value.audit } as State;
   }
-  if (![2, 3, 4, 5, 6].includes(value.schema as number) || !rows(value.managedSources, managedSource) || !rows(value.quarantine, quarantinedSource) || !rows(value.provenanceDecisions, provenanceDecision) || !rows(value.deletions, deletion)) throw Error('Invalid repository format');
+  if (![2, 3, 4, 5, 6, 7].includes(value.schema as number) || !rows(value.managedSources, managedSource) || !rows(value.quarantine, quarantinedSource) || !rows(value.provenanceDecisions, provenanceDecision) || !rows(value.deletions, deletion)) throw Error('Invalid repository format');
   if (value.schema === 2) {
     if (Object.hasOwn(value, 'retentionReviewRequired')) throw Error('Invalid repository format');
     // Earlier deletion may have erased all linkage; require an explicit retention review.
-    return { ...value, schema: 6, retentionReviewRequired: true, drafts: [], draftReviews: [], editions: [], editionReviews: [], schedules: [], preparationRuns: [] } as unknown as State;
+    return { ...value, schema: 7, retentionReviewRequired: true, drafts: [], draftReviews: [], editions: [], editionReviews: [], schedules: [], preparationRuns: [], identities: [], sessions: [], securityAudit: [], authenticatedActions: [] } as unknown as State;
   }
   if (typeof value.retentionReviewRequired !== 'boolean') throw Error('Invalid repository format');
-  if (value.schema === 3) return { ...value, schema: 6, drafts: [], draftReviews: [], editions: [], editionReviews: [], schedules: [], preparationRuns: [] } as unknown as State;
+  if (value.schema === 3) return { ...value, schema: 7, drafts: [], draftReviews: [], editions: [], editionReviews: [], schedules: [], preparationRuns: [], identities: [], sessions: [], securityAudit: [], authenticatedActions: [] } as unknown as State;
   if (!rows(value.drafts, draft) || !rows(value.draftReviews, draftReview)) throw Error('Invalid repository format');
-  if (value.schema === 4) return { ...value, schema: 6, editions: [], editionReviews: [], schedules: [], preparationRuns: [] } as unknown as State;
+  if (value.schema === 4) return { ...value, schema: 7, editions: [], editionReviews: [], schedules: [], preparationRuns: [], identities: [], sessions: [], securityAudit: [], authenticatedActions: [] } as unknown as State;
   if (!rows(value.editions, edition) || !rows(value.editionReviews, editionReview) || !editionHistory(value.editions, value.editionReviews)) throw Error('Invalid repository format');
-  if (value.schema === 5) return { ...value, schema: 6, schedules: [], preparationRuns: [] } as unknown as State;
+  if (value.schema === 5) return { ...value, schema: 7, schedules: [], preparationRuns: [], identities: [], sessions: [], securityAudit: [], authenticatedActions: [] } as unknown as State;
   if (!rows(value.schedules, schedule) || !rows(value.preparationRuns, preparationRun) || !schedulingHistory(value.schedules, value.preparationRuns, value.editions)) throw Error('Invalid repository format');
+  if (value.schema === 6) return { ...value, schema: 7, identities: [], sessions: [], securityAudit: [], authenticatedActions: [] } as unknown as State;
+  if (!securityRows(value.identities, 128, identityRecord) || !securityRows(value.sessions, 512, sessionRecord) || !securityRows(value.securityAudit, 512, securityEvent) || !securityRows(value.authenticatedActions, 512, authenticatedAction) || !securityHistory(value.identities, value.sessions, value.securityAudit, value.authenticatedActions)) throw Error('Invalid repository format');
   return value as unknown as State;
 }
 
@@ -218,6 +292,14 @@ export class JsonRepository {
     }
   }
   async transact<T>(change: (state: State) => T): Promise<T> {
+    return this.transactInternal(change);
+  }
+  /** The synchronous guard must throw on denial; it runs under the lock just before replacement. */
+  async transactGuarded<T>(change: (state: State) => T, guard: (state: State) => void): Promise<T> {
+    if (typeof guard !== 'function') throw Error('Repository commit guard is required');
+    return this.transactInternal(change, guard);
+  }
+  private async transactInternal<T>(change: (state: State) => T, guard?: (state: State) => void): Promise<T> {
     await mkdir(dirname(this.file), { recursive: true });
     const lock = this.file + '.lock';
     let locked = false;
@@ -232,7 +314,7 @@ export class JsonRepository {
       const result = change(state);
       // A result that cannot be returned must fail before any data is committed.
       const clonedResult = structuredClone(result);
-      if (state.schema !== 6) throw Error('Invalid repository format');
+      if (state.schema !== 7) throw Error('Invalid repository format');
       stateFromJSON(state);
       const serialized = JSON.stringify(orderedJSON(state));
       // Validate the actual JSON representation as well as the in-memory state.
@@ -240,6 +322,14 @@ export class JsonRepository {
       const file = await open(temp, 'wx', 0o600);
       try { await file.writeFile(serialized); await file.sync(); } finally { await file.close(); }
       this.beforeCommit?.();
+      if (guard) {
+        const decision: unknown = guard(state);
+        if (decision !== undefined) {
+          // Consume a mistaken async guard's rejection without ever awaiting or committing it.
+          void Promise.resolve(decision).catch(() => undefined);
+          throw Error('Repository commit guard must be synchronous and return no value');
+        }
+      }
       await rename(temp, this.file);
       return clonedResult;
     } finally {

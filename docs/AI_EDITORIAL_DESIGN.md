@@ -15,7 +15,7 @@ An active proposal records:
 - Model identity/version, prompt-template version, generation time and expiry.
 - Advisory language suggestions and usage/estimated-cost metadata.
 
-Proposal content is immutable. A new generation creates a separate proposal; review changes its review version/state rather than rewriting factual content. Schema 4 introduced draft and draft-review collections; current schema 6 also stores internal edition revisions/reviews and development preparation schedules/runs without changing proposal authorization. Reading schema 3 preserves its retention-review flag; reading schema 1/2 retains the conservative review hold. Migration is in memory until a successful transaction writes the file.
+Proposal content is immutable. A new generation creates a separate proposal; review changes its review version/state rather than rewriting factual content. Schema 4 introduced draft and draft-review collections; current schema 7 also stores editions, schedules and internal identity/session/security-receipt metadata without backfilling historical review authority. Reading schemas 3–6 preserves their retention-review flag; reading schema 1/2 retains the conservative review hold. Migration is in memory until a successful transaction writes the file.
 
 ## Eligibility and rights
 
@@ -63,7 +63,9 @@ These are transparent pattern suggestions, not automatic truth judgments or a ne
 
 Invalidation is performed by lifecycle checks, not a reviewer privilege. Review requires the expected proposal version and revalidates its captured story revision against the current story; stale submissions fail. Each accepted decision records the prior/next states and versions, time and an actor assertion explicitly marked `unauthenticated: true`, with a procedural audit event. Actor labels must match the restricted identifier format; that validation is not a verified identity or authorization grant. Denied review attempts also receive a generic procedural audit event.
 
-`READY_FOR_APPROVAL` does not map to a newsroom `APPROVED` or `PUBLISHED` transition. Existing revision-specific story approval and source/evidence rules still apply. Production approval remains blocked until authenticated reviewer identities, permissions and operational safeguards are implemented and separately approved.
+`READY_FOR_APPROVAL` does not map to a newsroom `APPROVED` or `PUBLISHED` transition. Existing revision-specific story approval and source/evidence rules still apply. Production approval still requires real verified reviewer identities, reviewed production permissions and operational safeguards beyond the synthetic foundation below.
+
+DL-005A provides a separate opt-in facade for current synthetic-session authentication and role checks. Nonfinal draft review and `DRAFT_READY` use distinct permissions, with revision-bound authenticated receipts separate from the existing `unauthenticated: true` review records. Direct fixture paths and prior actor labels remain unauthenticated. This layer does not establish real reviewer identity, model truth or publication authority; see [security design](SECURITY_DESIGN.md).
 
 ## Invalidation and retention
 

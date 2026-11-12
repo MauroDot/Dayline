@@ -49,7 +49,7 @@ async function rejected(repo: JsonRepository, directory: string, values: unknown
 const withSchedule = (value: unknown): unknown => ({ ...emptyState(), schedules: [value] });
 const withRun = (value: unknown): unknown => ({ ...emptyState(), schedules: [schedule()], preparationRuns: [value] });
 
-test('schema 6 roundtrips procedural scheduling states without adding editorial approval or publication', async () => fixture(async repo => {
+test('schema 7 roundtrips procedural scheduling states without adding editorial approval or publication', async () => fixture(async repo => {
   const value = state(), owner = value.schedules[0];
   owner.updatedAt = '2026-07-13T12:00:00.000Z'; owner.lastEvaluatedAt = owner.updatedAt;
   owner.nextOccurrence = occurrenceOn(owner, '2026-07-20');
@@ -184,7 +184,7 @@ test('structured scheduling audit identifiers are optional bounded data and neve
 }));
 
 test('an injected scheduling commit failure rolls back the migrated file, schedule, run and audit together', async () => fixture(async (repo, directory) => {
-  const { schedules: _newSchedules, preparationRuns: _newRuns, ...legacy } = emptyState();
+  const { schedules: _newSchedules, preparationRuns: _newRuns, identities: _newIdentities, sessions: _newSessions, securityAudit: _newAudit, authenticatedActions: _newActions, ...legacy } = emptyState();
   const bytes = JSON.stringify({ ...legacy, schema: 5 }, null, 2) + '\n';
   await writeFile(repo.file, bytes);
   const injected = new Error('Injected pre-rename failure');
@@ -195,7 +195,7 @@ test('an injected scheduling commit failure rolls back the migrated file, schedu
     const temps = readdirSync(directory).filter(name => name.endsWith('.tmp'));
     assert.equal(temps.length, 1);
     const staged = JSON.parse(readFileSync(join(directory, temps[0]), 'utf8'));
-    assert.equal(staged.schema, 6);
+    assert.equal(staged.schema, 7);
     assert.equal(staged.schedules.length, 1); assert.equal(staged.preparationRuns.length, 1); assert.equal(staged.audit.length, 1);
     if (attempts === 1) throw injected;
   } });

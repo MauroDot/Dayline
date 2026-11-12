@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { State } from '../newsroom/model.ts';
 import { timestamp } from '../ingestion/metadata.ts';
 import { reconcilePreparedRuns } from '../scheduling/lifecycle.ts';
+import { pruneSecurityState } from '../security/retention.ts';
 import { buildPlacement } from './eligibility.ts';
 import { sectionIds, type InvalidEdition } from './types.ts';
 
@@ -57,5 +58,6 @@ export function invalidateEditions(state: State, at: string): number {
       actor: 'edition-service', at: cleanupAt, version: null });
   }
   reconcilePreparedRuns(state, cleanupAt);
+  pruneSecurityState(state, cleanupAt);
   return count;
 }

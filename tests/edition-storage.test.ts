@@ -81,7 +81,7 @@ test('canonical storage serialization is deterministic for object-key order and 
 }));
 
 test('edition commit failure keeps original schema-4 bytes and rolls back revisions, reviews and audit together', async () => fixture(async (repo, directory) => {
-  const { editions: _newEditions, editionReviews: _newReviews, schedules: _newSchedules, preparationRuns: _newRuns, ...oldState } = emptyState();
+  const { editions: _newEditions, editionReviews: _newReviews, schedules: _newSchedules, preparationRuns: _newRuns, identities: _newIdentities, sessions: _newSessions, securityAudit: _newAudit, authenticatedActions: _newActions, ...oldState } = emptyState();
   const bytes = JSON.stringify({ ...oldState, schema: 4 }, null, 2) + '\n';
   await writeFile(repo.file, bytes);
   const injected = new Error('Injected edition commit failure');
@@ -92,7 +92,7 @@ test('edition commit failure keeps original schema-4 bytes and rolls back revisi
     const temps = readdirSync(directory).filter(name => name.endsWith('.tmp'));
     assert.equal(temps.length, 1);
     const staged = JSON.parse(readFileSync(join(directory, temps[0]), 'utf8'));
-    assert.equal(staged.schema, 6);
+    assert.equal(staged.schema, 7);
     assert.equal(staged.editions.length, 2);
     assert.equal(staged.editionReviews.length, 1);
     assert.equal(staged.audit.length, 1);
@@ -112,7 +112,7 @@ test('edition commit failure keeps original schema-4 bytes and rolls back revisi
   await failing.transact(change);
   const saved = await repo.read();
   assert.equal(calls, 2);
-  assert.equal(saved.schema, 6);
+  assert.equal(saved.schema, 7);
   assert.equal(saved.editions.length, 2);
   assert.equal(saved.editionReviews.length, 1);
   assert.equal(saved.audit.length, 1);

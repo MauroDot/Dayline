@@ -1,8 +1,9 @@
 import type { DraftRecord, DraftReview } from '../editorial/types.ts';
 import type { EditionRevision, EditionReview } from '../editions/types.ts';
 import type { PreparationSchedule, PreparationRun } from '../scheduling/types.ts';
+import type { IdentityRecord, SessionRecord, SecurityEvent, AuthenticatedAction } from '../security/types.ts';
 import type { ManagedSource, QuarantinedSource, ProvenanceDecision, DeletionMarker } from '../ingestion/records.ts';
-/** Internal, fictional-test-only newsroom records. No identity authentication is provided. */
+/** Internal newsroom records. Historical fixture assertions grant no authentication or publication authority. */
 export type SourceType = 'PRIMARY' | 'ORIGINAL' | 'SYNDICATED' | 'SECONDARY';
 export type Verification = 'UNVERIFIED' | 'VERIFIED' | 'DISPUTED';
 export type Status = 'INGESTED' | 'CLUSTERED' | 'DRAFT' | 'NEEDS_REVIEW' | 'APPROVED' | 'PUBLISHED' | 'REJECTED' | 'ON_HOLD' | 'CORRECTION_REQUIRED';
@@ -11,8 +12,8 @@ export interface Evidence { id: string; claim: string; support: string[]; contra
 export interface Story { id: string; headline: string; topic: string; summary: string; geography: string; eventAt: string | null; firstSeenAt: string; updatedAt: string; clusterId: string | null; evidence: Evidence[]; sourceIds: string[]; status: Status; version: number; retentionRedacted?: true }
 export interface Approval { storyId: string; version: number; reviewer: string; at: string; retentionRedacted?: true }
 export interface Audit { id: string; storyId: string | null; action: string; actor: string; at: string; version: number | null; subjectId?: string; scheduleId?: string; preparationRunId?: string }
-export interface State { schema: 6; schedules: PreparationSchedule[]; preparationRuns: PreparationRun[]; editions: EditionRevision[]; editionReviews: EditionReview[]; drafts: DraftRecord[]; draftReviews: DraftReview[]; retentionReviewRequired: boolean; sources: Source[]; revisions: Story[]; approvals: Approval[]; audit: Audit[]; managedSources: ManagedSource[]; quarantine: QuarantinedSource[]; provenanceDecisions: ProvenanceDecision[]; deletions: DeletionMarker[] }
-export const emptyState = (): State => ({ schema: 6, schedules: [], preparationRuns: [], editions: [], editionReviews: [], drafts: [], draftReviews: [], retentionReviewRequired: false, sources: [], revisions: [], approvals: [], audit: [], managedSources: [], quarantine: [], provenanceDecisions: [], deletions: [] });
+export interface State { schema: 7; identities: IdentityRecord[]; sessions: SessionRecord[]; securityAudit: SecurityEvent[]; authenticatedActions: AuthenticatedAction[]; schedules: PreparationSchedule[]; preparationRuns: PreparationRun[]; editions: EditionRevision[]; editionReviews: EditionReview[]; drafts: DraftRecord[]; draftReviews: DraftReview[]; retentionReviewRequired: boolean; sources: Source[]; revisions: Story[]; approvals: Approval[]; audit: Audit[]; managedSources: ManagedSource[]; quarantine: QuarantinedSource[]; provenanceDecisions: ProvenanceDecision[]; deletions: DeletionMarker[] }
+export const emptyState = (): State => ({ schema: 7, identities: [], sessions: [], securityAudit: [], authenticatedActions: [], schedules: [], preparationRuns: [], editions: [], editionReviews: [], drafts: [], draftReviews: [], retentionReviewRequired: false, sources: [], revisions: [], approvals: [], audit: [], managedSources: [], quarantine: [], provenanceDecisions: [], deletions: [] });
 export function canonicalURL(raw: string): string {
   const u = new URL(raw);
   if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) throw Error('Invalid source URL');

@@ -6,6 +6,7 @@ import { retentionDeadline, sourceId, timestamp } from '../ingestion/metadata.ts
 import { policyStatus, type RegistryPolicy } from '../ingestion/policies.ts';
 import type { DraftPolicyReference, GroundedEvidence } from './types.ts';
 import { assertSafeSource, validateOutput } from './validation.ts';
+import { pruneSecurityState } from '../security/retention.ts';
 
 function sortedJSON(value: unknown): string {
   const sorted = (item: unknown): unknown => {
@@ -115,5 +116,6 @@ export function invalidateDrafts(state: State, at: string): number {
     state.audit.push({ id: randomUUID(), storyId: null, action: 'AI_DRAFT_INVALIDATED',
       actor: 'editorial-service', at: cleanupAt, version: null });
   }
+  pruneSecurityState(state, cleanupAt);
   return invalidated.size;
 }
