@@ -106,11 +106,127 @@ Set staging/production variables privately before that command. A local developm
 
 ## Windows local acceptance
 
-In a fresh development shell in the isolated reviewed checkout, use Node.js 22.16.0 and `npm.cmd ci`, `npm.cmd run check`, `npm.cmd run typecheck`, `npm.cmd run build:public`, `npm.cmd run inspect:public` and `npm.cmd run smoke:public`. Use the documented Python/Chromium setup for browser regression. Start the artifact in a separate terminal on default loopback and confirm the logged host/port without exposing contact configuration. `.env.example` does not load settings by itself.
+DL-006A-W1 addresses acceptance tooling rather than production runtime behavior. On PowerShell 5.1 with system Node 24.22.3, the owner observed privilege-related `EPERM` creating links in four security tests, timeouts in two child-process signal tests, and generic smoke startup failure. The smoke process inherited Node 24 while the artifact intentionally requires exact Node 22.16.0. Windows process termination is not equivalent to POSIX signal delivery; neither test tooling nor documentation treats a forced Windows process kill as graceful POSIX shutdown. The old waiter also subscribed to exit after requesting termination and checked only `exitCode`, so it could miss an already signalled exit. W1 registers exit observation at spawn and accounts for both exit and signal state without relabeling a forced kill as a graceful close.
 
-Check homepage, safe static assets and the official panels; confirm `/api/health` is distinct from `/api/ready`. Test missing-source/stale behavior and record actual current official report/update timestamps only when compliant live network checks were performed. Confirm GET/HEAD support, 404 for `/internal/principal`, `/auth`, `/api/admin`, `/src/security/http.ts` and `/dev/edition`, and 405 for a POST to an editorial-looking path. Send Ctrl+C and confirm process exit and successful restart with readiness initially unknown again. Do not open a firewall port or activate the private editorial listener.
+The owner separately reported that original commit `d49ba4065e75ba0893be25b26b722f2581607c97` built and inspected successfully on Windows with clean provenance, eleven runtime/package entries plus the manifest, and no runtime npm dependencies. Manually launching its packaged reader with Node 22.16.0 produced `public_started` in staging and rendered the homepage. The owner confirmed eight manual browser checks, including zoom, navigation, route isolation and Treasury/NWS inspection, and reported two passing GitHub Actions workflows for that original commit. These are owner-reported historical results, not tests performed by the Linux remediation environment. Repeat the W1 acceptance procedure on the new reviewed remediation commit after it is available through a separately authorized handoff.
 
-The development checkout's opt-in fictional edition view remains available only in its documented development mode; it is not part of the artifact. Separately record Windows physical, keyboard/assistive-technology and native 200%/400% browser zoom acceptance. Automated Chromium and targeted axe checks do not certify formal WCAG conformance or establish physical acceptance. Foundation 001's previously accepted development milestone remains historical acceptance.
+### Select the side-by-side runtime in PowerShell 5.1
+
+Open PowerShell in the correct, clean reviewed checkout. Do not replace or uninstall system Node. The example resolves the side-by-side installation under the current user's profile rather than embedding an owner's username:
+
+```powershell
+$node22 = Join-Path $env:USERPROFILE 'Tools\node-v22.16.0-win-x64\node.exe'
+if (-not (Test-Path -LiteralPath $node22 -PathType Leaf)) {
+    throw 'Select the existing trusted Node.js 22.16.0 executable.'
+}
+$node22 = (Resolve-Path -LiteralPath $node22).Path
+$nodeVersion = & $node22 --version
+if ($LASTEXITCODE -ne 0 -or $nodeVersion -ne 'v22.16.0') {
+    throw 'Node.js 22.16.0 is required for artifact acceptance.'
+}
+$nodeDirectory = Split-Path -Parent $node22
+$npmCli = Join-Path $nodeDirectory 'node_modules\npm\bin\npm-cli.js'
+if (-not (Test-Path -LiteralPath $npmCli -PathType Leaf)) {
+    throw 'The selected Node installation must include its trusted npm CLI.'
+}
+```
+
+Use the selected executable to invoke npm and temporarily prepend its directory to this shell's PATH. The prepend makes bare `node` invocations inside npm scripts and their children resolve consistently. Restore the prior PATH in `finally`; no machine/user PATH setting or existing Node installation is modified. PowerShell 5.1 does not support the shell `&&` form, so each external exit code is checked explicitly:
+
+```powershell
+$previousPath = $env:PATH
+try {
+    $env:PATH = $nodeDirectory + [IO.Path]::PathSeparator + $previousPath
+    $scriptNodeVersion = & node --version
+    if ($LASTEXITCODE -ne 0 -or $scriptNodeVersion -ne 'v22.16.0') {
+        throw 'npm script Node selection is inconsistent.'
+    }
+    & $node22 $npmCli ci
+    if ($LASTEXITCODE -ne 0) { throw 'Locked dependency installation failed.' }
+    & $node22 $npmCli run check
+    if ($LASTEXITCODE -ne 0) { throw 'Static/backend/security checks failed.' }
+    & $node22 $npmCli run typecheck
+    if ($LASTEXITCODE -ne 0) { throw 'TypeScript check failed.' }
+
+    # Use fresh paths. The builder never overwrites a previous artifact.
+    $candidateBase = Join-Path 'dist' ('public-reader-w1-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    $candidateA = $candidateBase + '-a'
+    $candidateB = $candidateBase + '-b'
+    & $node22 --experimental-strip-types scripts/build-public.ts --output $candidateA
+    if ($LASTEXITCODE -ne 0) { throw 'First public artifact build failed.' }
+    & $node22 --experimental-strip-types scripts/build-public.ts --output $candidateB
+    if ($LASTEXITCODE -ne 0) { throw 'Second public artifact build failed.' }
+    & $node22 --experimental-strip-types scripts/inspect-public.ts $candidateA
+    if ($LASTEXITCODE -ne 0) { throw 'First artifact inspection failed.' }
+    & $node22 --experimental-strip-types scripts/inspect-public.ts $candidateB
+    if ($LASTEXITCODE -ne 0) { throw 'Second artifact inspection failed.' }
+    & $node22 --experimental-strip-types scripts/smoke-public.ts $candidateA --node $node22
+    if ($LASTEXITCODE -ne 0) { throw 'Artifact smoke failed.' }
+} finally {
+    $env:PATH = $previousPath
+}
+```
+
+The default smoke command uses the parent process's executable, but validates its version before launching the reader. The explicit `--node` override is an absolute path to a trusted installed Node executable and is checked before use. An invalid selection, failed probe or unsupported version produces a fixed sanitized `SMOKE_RUNTIME_INVALID`, `SMOKE_RUNTIME_PROBE_FAILED` or `SMOKE_UNSUPPORTED_RUNTIME` category. It never silently chooses another runtime. Startup/shutdown or isolation failures remain failures rather than being relabeled as platform skips. The production artifact independently retains its own exact runtime pin and Node 24 rejection; the override changes only which executable the local smoke tool launches.
+
+For a build made from the reviewed clean commit, inspect each manifest without dumping environment/contact settings:
+
+```powershell
+$manifestA = Get-Content -LiteralPath (Join-Path $candidateA 'public-manifest.json') -Raw | ConvertFrom-Json
+$manifestB = Get-Content -LiteralPath (Join-Path $candidateB 'public-manifest.json') -Raw | ConvertFrom-Json
+$reviewedHead = git rev-parse HEAD
+if ($LASTEXITCODE -ne 0) { throw 'Cannot read reviewed local HEAD.' }
+if ($manifestA.provenance.sourceDirty -or $manifestB.provenance.sourceDirty) {
+    throw 'Dirty builds are not release candidates.'
+}
+if ($manifestA.provenance.commit -ne $reviewedHead -or $manifestB.provenance.commit -ne $reviewedHead) {
+    throw 'Artifact provenance does not match reviewed local HEAD.'
+}
+if ($manifestA.contentDigest -ne $manifestB.contentDigest) {
+    throw 'Repeated runtime content digests differ.'
+}
+$manifestHashA = (Get-FileHash -LiteralPath (Join-Path $candidateA 'public-manifest.json') -Algorithm SHA256).Hash
+$manifestHashB = (Get-FileHash -LiteralPath (Join-Path $candidateB 'public-manifest.json') -Algorithm SHA256).Hash
+if ($manifestHashA -ne $manifestHashB) { throw 'Repeated manifests differ.' }
+```
+
+Inspection verifies the named runtime bytes against each manifest; equal hashes/digests are evidence of repeated-build identity, not proof of a trusted source or signed provenance. Both artifacts must still contain exactly twelve physical files and no test harness, private domains, credentials or runtime npm dependencies.
+
+### Interpret capability and lifecycle results
+
+The suite probes file and directory symlink creation in harmless, isolated temporary fixtures and verifies that the created link is actually a link. Supported capabilities run the original rejection assertions. Only `EPERM` or `EACCES` from the actual link-creation operation on Windows is treated as a privilege-related unavailable capability. Setup, inspection, cleanup and other errors still fail, as do equivalent errors on POSIX. Each probe disposes only its own isolated temporary fixture in `finally`. Independent output-preservation, duplicate-key manifest and missing-asset checks run in separate cases even if links cannot be created. There are four link-dependent checks: three require file links and one requires a directory link. Record TAP's pass/fail/skip totals and each skip reason. A skipped symlink assertion is not a passing security assertion. Linux continues to execute strict link rejection. No test elevates automatically, enables Developer Mode or changes Windows security settings.
+
+The two CLI SIGTERM/SIGINT tests remain strict on POSIX. On Windows those POSIX-specific cases are explicitly identified as unavailable; a test-only controlled IPC child verifies the same public runtime's close path instead. It stops HTTP admission, checks bounded accepted work/socket cleanup and verifies that no new request succeeds after shutdown starts. The child-exit observer is registered before termination, accounts for exit and signal state, and cleans up failed/orphaned children. The IPC worker lives under `tests/helpers` and is excluded from the artifact; it creates no shutdown HTTP endpoint or deployed administration seam. The Windows path does not claim SIGTERM/SIGINT parity. If both Windows link capabilities are unavailable, four link checks plus the two POSIX-only signal cases are expected to be explicitly skipped; this is conditional accounting, not a claimed Windows run. Supported capabilities reduce that skip count. The independent security checks and the controlled IPC lifecycle check still run. Record actual Windows controlled-close results separately from Linux POSIX results and from deterministic simulated Windows helper cases.
+
+### Manual reader acceptance
+
+Use the documented Python/Playwright/Chromium setup. For browser regression, temporarily select Node in the same way as above:
+
+```powershell
+$previousPath = $env:PATH
+try {
+    $env:PATH = $nodeDirectory + [IO.Path]::PathSeparator + $previousPath
+    python -m unittest discover -s tests/browser -v
+    if ($LASTEXITCODE -ne 0) { throw 'Chromium regression failed.' }
+} finally {
+    $env:PATH = $previousPath
+}
+```
+
+Start the inspected artifact from the same validated PowerShell session, where `$node22` and `$candidateA` remain defined, using the explicit executable. In a new terminal, reestablish those variables to the selected executable and the already inspected candidate; terminal variables are not shared:
+
+```powershell
+$env:NODE_ENV = 'staging'
+$env:HOST = '127.0.0.1'
+$env:PORT = '3000'
+# Set NWS_USER_AGENT privately to the owner's real identifying contact first.
+# Do not echo it, put it in a URL, or commit an environment file.
+& $node22 --experimental-strip-types (Join-Path $candidateA 'src\public\main.ts')
+```
+
+Check homepage, safe assets and official panels; distinguish `/api/health` from `/api/ready`. Record source timestamps only for actual compliant live requests. Confirm GET/HEAD support, 404 for `/internal/principal`, `/auth`, `/api/admin`, `/src/security/http.ts` and `/dev/edition`, and 405 for an editorial-looking POST. Use the terminal's normal Ctrl+C interaction, record the observed stop/restart behavior, and confirm that restarted readiness is initially unknown. This manual console observation is separate from programmatic Windows child termination. Do not open firewall ports or activate the private editorial listener.
+
+The source checkout's opt-in fictional edition remains development-only and is absent from the artifact. Repeat and record the relevant W1 Windows physical/browser checks, including native zoom and navigation; keyboard/assistive-technology coverage not already demonstrated remains separate. Automated Chromium/axe and simulated Windows tests do not certify WCAG conformance or prove an actual Windows rerun. Foundation 001 acceptance and the owner's original DL-006A results remain historical acceptance.
 
 ## Prepared staging release gate — manual authorization required
 
@@ -128,7 +244,7 @@ Only after that authorization, place the inspected candidate in a new immutable 
 
 ## Restart, rollback and previous-version recovery
 
-Use the future selected supervisor's bounded restart policy with backoff and an attempt ceiling; do not loop endlessly on invalid configuration or an upstream outage. Treat configuration failure as a release blocker. SIGTERM/SIGINT stops acceptance, drains admitted requests up to the configured deadline, then closes remaining sockets. Match the supervisor grace period to that deadline with a small allowance. Upstream-only failures should be diagnosed through readiness/source status rather than falsely marked healthy data or automatically triggering an uncontrolled restart storm.
+Use the future selected supervisor's bounded restart policy with backoff and an attempt ceiling; do not loop endlessly on invalid configuration or an upstream outage. Treat configuration failure as a release blocker. On POSIX, SIGTERM/SIGINT stops acceptance, drains admitted requests up to the configured deadline, then closes remaining sockets. Windows console/service-manager termination must be accepted for the selected host separately; the local controlled IPC harness verifies the close path without claiming identical signal delivery. Match the supervisor grace period to that deadline with a small allowance. Upstream-only failures should be diagnosed through readiness/source status rather than falsely marked healthy data or automatically triggering an uncontrolled restart storm.
 
 Rollback triggers include wrong artifact/hash, unexpected public route or secret exposure, invalid configuration, startup/shutdown failure, reader regression or unaccepted source/readiness behavior. Stop admission to the candidate through the selected platform's controlled release switch. Restore the previous inspected version directory and its reviewed configuration atomically, start/check it under the same least-privilege policy, then verify health, source observations and route isolation before returning traffic. Restarting either version clears cache; a temporary 503 readiness state is expected until valid samples are observed. This reader stores no newsroom or payment data, so no application database rollback is part of this procedure.
 

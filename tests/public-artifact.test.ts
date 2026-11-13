@@ -6,6 +6,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildPublicArtifact } from '../scripts/build-public.ts';
 import { canonicalJSON, inspectPublicArtifact, manifestName, requiredPublicFiles, sha256, type PublicManifest } from '../scripts/inspect-public.ts';
+import { symlinkCapability } from './helpers/symlink-capability.ts';
 
 type Fixture = { directory: string; source: string; output: (name?: string) => string };
 async function fixture(work: (fixture: Fixture) => Promise<void>): Promise<void> {
@@ -100,23 +101,34 @@ test('privileged builtin process and module loaders are excluded from the runtim
   }
 }));
 
-test('source symlinks cannot pull private files into the runtime artifact', async () => fixture(async f => {
-  const original = path.join(f.source, 'src/public/config.ts'); await rm(original);
-  const secret = path.join(f.directory, 'private.txt'); await writeFile(secret, 'PRIVATE_SENTINEL'); await symlink(secret, original);
-  await assert.rejects(buildPublicArtifact({ sourceRoot: f.source, outputRoot: f.output() }), /PUBLIC_PATH_INVALID/);
-  await assert.rejects(access(f.output()));
-}));
+test('source symlinks cannot pull private files into the runtime artifact', async context => {
+  const capability = await symlinkCapability('file');
+  if (!capability.supported) { context.skip(capability.reason); return; }
+  await fixture(async f => {
+    const original = path.join(f.source, 'src/public/config.ts'); await rm(original);
+    const secret = path.join(f.directory, 'private.txt'); await writeFile(secret, 'PRIVATE_SENTINEL'); await symlink(secret, original, 'file');
+    await assert.rejects(buildPublicArtifact({ sourceRoot: f.source, outputRoot: f.output() }), /PUBLIC_PATH_INVALID/);
+    await assert.rejects(access(f.output()));
+  });
+});
 
-test('existing output source roots ancestors and symlink destinations preserve existing work', async () => fixture(async f => {
+test('existing output source roots and ancestors preserve existing work', async () => fixture(async f => {
   const output = f.output(); await mkdir(output); await writeFile(path.join(output, 'sentinel'), 'KEEP');
   await assert.rejects(buildPublicArtifact({ sourceRoot: f.source, outputRoot: output }), /PUBLIC_OUTPUT_EXISTS/);
   assert.equal(await readFile(path.join(output, 'sentinel'), 'utf8'), 'KEEP');
   for (const candidate of [f.source, f.directory, path.join(f.source, 'src', 'generated')]) await assert.rejects(buildPublicArtifact({ sourceRoot: f.source, outputRoot: candidate }), /PUBLIC_OUTPUT_UNSAFE/);
-  const target = path.join(f.directory, 'target'); await mkdir(target); await writeFile(path.join(target, 'sentinel'), 'KEEP');
-  const linked = path.join(f.directory, 'linked'); await symlink(target, linked);
-  await assert.rejects(buildPublicArtifact({ sourceRoot: f.source, outputRoot: path.join(linked, 'new') }), /PUBLIC_OUTPUT_UNSAFE/);
-  assert.deepEqual(await readdir(target), ['sentinel']);
 }));
+
+test('symlink destinations preserve existing work', async context => {
+  const capability = await symlinkCapability('dir');
+  if (!capability.supported) { context.skip(capability.reason); return; }
+  await fixture(async f => {
+    const target = path.join(f.directory, 'target'); await mkdir(target); await writeFile(path.join(target, 'sentinel'), 'KEEP');
+    const linked = path.join(f.directory, 'linked'); await symlink(target, linked, 'dir');
+    await assert.rejects(buildPublicArtifact({ sourceRoot: f.source, outputRoot: path.join(linked, 'new') }), /PUBLIC_OUTPUT_UNSAFE/);
+    assert.deepEqual(await readdir(target), ['sentinel']);
+  });
+});
 
 test('private-key and access-token patterns embedded in allowed source files block artifact creation', async () => fixture(async f => {
   for (const text of ['-----BEGIN PRIVATE KEY-----', 'ghp_' + 'a'.repeat(40), 'sk-proj-' + 'a'.repeat(40), 'AKIA' + 'A'.repeat(16)]) {
@@ -158,11 +170,18 @@ test('inspection rejects dependency-bearing runtime package even with recomputed
   await assert.rejects(inspectPublicArtifact(f.output()), /PUBLIC_PACKAGE_INVALID/);
 }));
 
-test('inspection rejects linked files and noncanonical duplicate-key manifests', async () => fixture(async f => {
+test('inspection rejects linked files', async context => {
+  const capability = await symlinkCapability('file');
+  if (!capability.supported) { context.skip(capability.reason); return; }
+  await fixture(async f => {
+    await buildPublicArtifact({ sourceRoot: f.source, outputRoot: f.output() });
+    const app = path.join(f.output(), 'public/app.js'); const saved = path.join(f.directory, 'app.js'); await writeFile(saved, await readFile(app)); await rm(app); await symlink(saved, app, 'file');
+    await assert.rejects(inspectPublicArtifact(f.output()), /PUBLIC_PATH_INVALID/);
+  });
+});
+
+test('inspection rejects noncanonical duplicate-key manifests', async () => fixture(async f => {
   await buildPublicArtifact({ sourceRoot: f.source, outputRoot: f.output() });
-  const app = path.join(f.output(), 'public/app.js'); const saved = path.join(f.directory, 'app.js'); await writeFile(saved, await readFile(app)); await rm(app); await symlink(saved, app);
-  await assert.rejects(inspectPublicArtifact(f.output()), /PUBLIC_PATH_INVALID/);
-  await rm(app); await writeFile(app, await readFile(saved));
   const manifest = path.join(f.output(), manifestName); const bytes = await readFile(manifest, 'utf8');
   await writeFile(manifest, bytes.replace('{\n', '{\n  "schema": 1,\n'));
   await assert.rejects(inspectPublicArtifact(f.output()), /PUBLIC_MANIFEST_INVALID/);

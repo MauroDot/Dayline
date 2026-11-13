@@ -1,15 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import http from 'node:http';
 import net from 'node:net';
 import { once } from 'node:events';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertPackagedRuntimeVersion, readPublicProvenance, safePublicLog, startPublicRuntime } from '../src/public/main.ts';
 import { attachPublicLifecycle } from '../src/public/lifecycle.ts';
+import { spawnPublicProcess } from './helpers/public-process.ts';
 
 const contact = 'Dayline/0.1 (synthetic runtime test; runtime@dayline.test)';
 async function port(): Promise<number> {
@@ -17,26 +18,21 @@ async function port(): Promise<number> {
   const value = server.address(); assert.ok(value && typeof value !== 'string');
   await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); return value.port;
 }
-async function stopped(child: ChildProcess): Promise<number | null> {
-  if (child.exitCode !== null) return child.exitCode;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try { return await Promise.race([once(child, 'exit').then(([code]) => code as number | null), new Promise<never>((_, reject) => { timer = setTimeout(() => { child.kill('SIGKILL'); reject(Error('Public process did not stop')); }, 4000); })]); }
-  finally { if (timer) clearTimeout(timer); }
-}
-async function launch() {
+async function launch(controlled = false) {
   const bindPort = await port();
-  const child = spawn(process.execPath, ['--experimental-strip-types', 'src/public/main.ts'], {
-    env: { ...process.env, NODE_ENV: 'staging', HOST: '127.0.0.1', PORT: String(bindPort), NWS_USER_AGENT: contact, SHUTDOWN_TIMEOUT_MS: '1000' }, stdio: ['ignore', 'pipe', 'pipe'],
+  const running = spawnPublicProcess({ entryPoint: resolve('src/public/main.ts'), controlled,
+    environment: { ...process.env, NODE_ENV: 'staging', HOST: '127.0.0.1', PORT: String(bindPort), NWS_USER_AGENT: contact, SHUTDOWN_TIMEOUT_MS: '1000' },
   });
-  let output = '', errors = ''; child.stdout!.on('data', chunk => { output += chunk.toString(); }); child.stderr!.on('data', chunk => { errors += chunk.toString(); });
-  child.on('error', () => {});
+  let exited = false; void running.exited.then(() => { exited = true; }, () => { exited = true; });
   const base = `http://127.0.0.1:${bindPort}`;
-  for (let tries = 0; tries < 100; tries++) {
-    if (child.exitCode !== null) throw Error('Public child startup failed');
-    try { const response = await fetch(base + '/api/health'); await response.arrayBuffer(); if (response.status === 200) return { child, base, output: () => output, errors: () => errors }; } catch {}
-    await new Promise(resolve => setTimeout(resolve, 20));
-  }
-  child.kill('SIGKILL'); throw Error('Public child startup deadline exceeded');
+  try {
+    for (let tries = 0; tries < 100; tries++) {
+      if (exited) throw Error('PUBLIC_CHILD_STARTUP_FAILED');
+      try { const response = await fetch(base + '/api/health', { signal: AbortSignal.timeout(300) }); await response.arrayBuffer(); if (response.status === 200) return { ...running, base }; } catch {}
+      await new Promise(done => setTimeout(done, 20));
+    }
+    throw Error('PUBLIC_CHILD_STARTUP_TIMEOUT');
+  } catch (error) { await running.cleanup(); throw error; }
 }
 test('startup and failure log sanitizer never serializes supplied secrets headers URLs or stack traces', () => {
   const value = safePublicLog({ event: 'public_started', requestId: '00000000-0000-0000-0000-000000000001', mode: 'staging', host: '127.0.0.1', port: 3000,
@@ -107,14 +103,47 @@ test('late listener failures are logged as fixed safe categories without raw exc
     assert.doesNotMatch(JSON.stringify(logs), /private-listener|credential|stack/);
   } finally { await runtime.close(); }
 });
-for (const signal of ['SIGTERM', 'SIGINT'] as const) test(`public CLI handles ${signal} with structured bounded clean shutdown`, async () => {
+const windowsSignalReason = 'Windows child.kill does not deliver POSIX signals; controlled IPC shutdown is verified separately';
+for (const signal of ['SIGTERM', 'SIGINT'] as const) test(`public CLI handles ${signal} with structured bounded clean shutdown`, {
+  skip: process.platform === 'win32' ? windowsSignalReason : false,
+}, async () => {
   const running = await launch();
   try {
     const ready = await fetch(running.base + '/api/ready'); assert.equal(ready.status, 503); await ready.arrayBuffer();
-    running.child.kill(signal); assert.equal(await stopped(running.child), 0);
+    running.child.kill(signal); assert.deepEqual(await running.waitForExit(), { code: 0, signal: null });
     assert.match(running.output(), /"event":"public_started"/); assert.match(running.output(), /"event":"public_stopped"/);
     assert.doesNotMatch(running.output(), /runtime@dayline|Bearer/);
-  } finally { if (running.child.exitCode === null) { running.child.kill('SIGKILL'); await stopped(running.child); } }
+  } finally { await running.cleanup(); }
+});
+test('controlled child shutdown stops accepting requests and bounds accepted connections', async () => {
+  const running = await launch(true);
+  const socket = net.connect(Number(new URL(running.base).port), '127.0.0.1');
+  socket.on('error', () => {});
+  try {
+    await once(socket, 'connect');
+    socket.write('GET / HTTP/1.1\r\nHost: local\r\n');
+    const socketClosed = new Promise<void>(done => socket.once('close', () => done()));
+    const started = Date.now();
+    await running.requestShutdown();
+    // The acknowledgement is sent after server.close() stops listening, while accepted work is still bounded.
+    assert.equal(running.child.exitCode, null);
+    await assert.rejects(fetch(running.base + '/api/health', { signal: AbortSignal.timeout(500) }));
+    assert.deepEqual(await running.waitForExit(), { code: 0, signal: null });
+    await socketClosed;
+    assert.ok(Date.now() - started < 4000);
+    assert.match(running.output(), /"event":"public_shutdown_forced"/);
+    assert.match(running.output(), /"event":"public_stopped"/);
+    assert.doesNotMatch(running.output(), /runtime@dayline|Bearer/);
+  } finally { socket.destroy(); await running.cleanup(); }
+});
+test('controlled test child closes its listener and exits nonzero when its parent IPC channel is lost', async () => {
+  const running = await launch(true);
+  try {
+    running.child.disconnect();
+    assert.deepEqual(await running.waitForExit(), { code: 1, signal: null });
+    await assert.rejects(fetch(running.base + '/api/health', { signal: AbortSignal.timeout(500) }));
+    assert.match(running.output(), /"event":"public_stopped"/);
+  } finally { await running.cleanup(); }
 });
 test('lifecycle bounds shutdown for a partially received request and closes accepted sockets', async () => {
   const server = http.createServer((_req, _res) => {}), events: string[] = [];

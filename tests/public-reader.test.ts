@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createPublicServer, type PublicServerOptions, type SafePublicEvent } from '../src/public/reader.ts';
 import { parsePublicConfiguration } from '../src/public/config.ts';
+import { symlinkCapability } from './helpers/symlink-capability.ts';
 const config = () => parsePublicConfiguration({NODE_ENV:'staging', NWS_USER_AGENT:'Dayline test (test@dayline.invalid)'});
 const debtValue = {data:[{record_date:'2026-11-03',tot_pub_debt_out_amt:'3.00',debt_held_public_amt:'2.00',intragov_hold_amt:'1.00'}]};
 const fakeFetch = (async (input: Parameters<typeof fetch>[0]) => {
@@ -118,9 +119,18 @@ test('request response deadline is bounded without leaked source errors or false
  await fixture(async origin=>{const start=Date.now();const response=await fetch(origin+'/api/debt');assert.equal(response.status,503);assert.ok(Date.now()-start<1000);assert.equal((await ready(origin)).status,503);},{config:{...config(),requestTimeoutMs:50,headersTimeoutMs:50,upstreamTimeoutMs:100},fetcher:async()=>new Promise<Response>(()=>{})});
 });
 
-test('missing or symlinked static assets fail safely and make application readiness fail',async()=>{
+test('missing static assets fail safely and make application readiness fail',async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'dayline-static-missing-'));
+ try {
+  await fixture(async origin=>{const response=await fetch(origin+'/app.js');assert.equal(response.status,500);const body=await response.text();assert.equal(body.includes(directory),false);assert.equal((await ready(origin)).body.checks.assets,false);assert.equal((await fetch(origin+'/api/health')).status,200);},{staticRoot:directory});
+ }finally{await rm(directory,{recursive:true,force:true});}
+});
+
+test('symlinked static assets fail safely and make application readiness fail',async context=>{
+ const capability=await symlinkCapability('file');
+ if(!capability.supported){context.skip(capability.reason);return;}
  const directory=await mkdtemp(join(tmpdir(),'dayline-static-'));
- try {await writeFile(join(directory,'private.txt'),'PRIVATE_FILESYSTEM_TOKEN');await symlink(join(directory,'private.txt'),join(directory,'app.js'));
+ try {await writeFile(join(directory,'index.html'),'<!doctype html><title>Fictional test</title>');await writeFile(join(directory,'style.css'),'body{}');await writeFile(join(directory,'stories.js'),'void 0;');await writeFile(join(directory,'private.txt'),'PRIVATE_FILESYSTEM_TOKEN');await symlink(join(directory,'private.txt'),join(directory,'app.js'),'file');
   await fixture(async origin=>{const response=await fetch(origin+'/app.js');assert.equal(response.status,500);const body=await response.text();assert.equal(body.includes(directory),false);assert.equal(body.includes('PRIVATE_FILESYSTEM_TOKEN'),false);assert.equal((await ready(origin)).body.checks.assets,false);assert.equal((await fetch(origin+'/api/health')).status,200);},{staticRoot:directory});
  }finally{await rm(directory,{recursive:true,force:true});}
 });
