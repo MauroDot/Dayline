@@ -4,7 +4,7 @@ import { lstat, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ArtifactError, canonicalJSON, inspectPublicArtifact, manifestName, optionalPublicFiles, publicPackage,
-  regularBytes, rejectEmbeddedCredentials, requiredPublicFiles, sha256, verifyPublicModuleGraph, type PublicManifest } from './inspect-public.ts';
+  regularBytes, rejectEmbeddedCredentials, rejectNonLFText, requiredPublicFiles, sha256, verifyPublicModuleGraph, type PublicManifest } from './inspect-public.ts';
 
 export interface PublicBuildOptions { sourceRoot?: string; outputRoot?: string }
 function git(root: string, ...args: string[]): string {
@@ -40,10 +40,13 @@ export async function buildPublicArtifact(options: PublicBuildOptions = {}): Pro
   const files = new Map<string, Buffer>();
   for (const name of requiredPublicFiles) files.set(name, await regularBytes(source, name));
   for (const name of optionalPublicFiles) if (await exists(path.join(source, name))) files.set(name, await regularBytes(source, name));
-  for (const bytes of files.values()) rejectEmbeddedCredentials(bytes);
+  for (const bytes of files.values()) { rejectNonLFText(bytes); rejectEmbeddedCredentials(bytes); }
   verifyPublicModuleGraph(files);
+  let packageBytes: Buffer;
+  try { packageBytes = await regularBytes(source, 'package.json'); } catch { throw new ArtifactError('PUBLIC_PACKAGE_INVALID'); }
+  rejectNonLFText(packageBytes);
   let pkg: unknown;
-  try { pkg = JSON.parse((await regularBytes(source, 'package.json')).toString('utf8')); } catch { throw new ArtifactError('PUBLIC_PACKAGE_INVALID'); }
+  try { pkg = JSON.parse(packageBytes.toString('utf8')); } catch { throw new ArtifactError('PUBLIC_PACKAGE_INVALID'); }
   if (pkg === null || typeof pkg !== 'object' || typeof (pkg as { version?: unknown }).version !== 'string') throw new ArtifactError('PUBLIC_PACKAGE_INVALID');
   files.set('package.json', Buffer.from(publicPackage((pkg as { version: string }).version)));
   const entries = Object.fromEntries([...files].sort(([a], [b]) => a.localeCompare(b)).map(([name, bytes]) => [name, { sha256: sha256(bytes), bytes: bytes.byteLength }]));

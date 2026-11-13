@@ -1,6 +1,28 @@
 # Public-reader staging and recovery runbook
 
-DL-006A prepares a hosting-neutral read-only public reader. This is a procedure for a future controlled staging release, not authorization to transfer an artifact, publish an image, configure hosting/DNS/firewalls or deploy. No hosting provider is selected. The current authorized work ends with local implementation, validation and a local commit.
+DL-006A established the hosting-neutral read-only public reader. The owner now reports an existing Render Free staging instance; the record below identifies it without claiming an independent account/configuration inspection. DL-006B-R2 is local reliability/release preparation only. It does not authorize a deployment, rollback, artifact transfer, hosting/DNS/TLS/firewall change, plan change or provider mutation.
+
+## Existing Render staging (owner-reported)
+
+| Item | Supplied baseline |
+| --- | --- |
+| Staging origin | `https://dayline-xd4l.onrender.com` |
+| Render service | `srv-dbrl9h0u01pc73drftg0` |
+| Plan | Free |
+| Deployed source commit | `eb574d0d153ffe2fc1f9b818634f379b2e46d444` |
+| Automatic deployments | Disabled |
+
+These values came from the owner. The R2 cloud environment has no connected Render account tool. Its one read-only health attempt was denied by the managed proxy with CONNECT 403 before the reader could respond; the application HTTP status, current deployed bytes and provider configuration were not independently observed. Do not label this proxy limitation as a failed Render health check. Record unavailable evidence as unverified rather than inventing successful hosting results. Do not bypass the network restriction or expose a new status/settings route to work around it.
+
+Before a future separately authorized release, the owner uses existing read-only provider access to confirm this service, the current deployed commit, plan, automatic-deploy setting, build/start commands, runtime selection, health-check behavior and sanitized startup/deployment events. Do not print environment values or contacts; record only reviewed setting names and non-secret identities needed for release evidence. R2 itself does not change those settings. If required artifact/host evidence is not available in the existing provider view, stop for review rather than assume it or purchase/enable an additional provider feature.
+
+### Free-plan sleep, restart and resource assumptions
+
+A Free instance can sleep and require a cold start; no always-on availability or fixed wake-up latency is promised. An initial network timeout, gateway response or delay requires context before it is classified as persistent application failure. Use a finite, owner-agreed observation window and existing sanitized provider events; do not create a keep-awake job, repeated live source probe or ongoing monitoring loop. If that window is exhausted, record the result as unresolved and review it. A sleeping instance does not itself justify a rollback, restart storm or plan change.
+
+Every new process starts with empty caches and unknown source observations. A warm response may therefore become an honest readiness 503 after a host sleep/restart even though the source commit is unchanged. `/api/health` is the liveness signal; `/api/ready` describes observed official-data freshness and can remain 503 while government data or request capacity is unavailable. Health still depends on connection availability, and a 200 health response does not prove all routes, assets or dependencies are accepted.
+
+The existing finite connection/admission limits, five source cache slots, response-size limits and bounded retry/time budgets remain process-local. Multiple instances and restarts do not share source observations or API quota/coalescing state. Review actual owner-visible Free compute/memory/bandwidth constraints and current terms before a future trigger; this document does not invent a provider quota or guarantee a cost outcome. Retain the Free plan and existing budget controls. Do not enable paid monitoring, persistent storage, additional instances, a new service or a billing change in this task.
 
 ## Runtime and trust boundary
 
@@ -34,6 +56,8 @@ There are no runtime npm dependencies. `.git`, environment files, credentials, l
 
 A development build may truthfully record `sourceDirty: true` while implementation is uncommitted. Do not release such a build. After the reviewed local commit is created, build again into a new directory, verify `sourceDirty: false`, confirm the manifest commit equals the reviewed release SHA, and inspect every file. File hashes identify the actual package bytes even when comparing development builds. Build twice from the same unchanged source state to verify deterministic output; changing the commit or dirty state intentionally changes provenance metadata.
 
+W2 controls checkout bytes through explicit `.gitattributes` `text eol=lf` entries for the nine required public source/assets, lifecycle support, source `package.json` and `.gitattributes` itself. No broad text/binary rule or global Git setting is added. A fresh checkout must retain LF for those paths even when `core.autocrlf=true`. The builder and inspector reject carriage returns rather than normalize input or conceal changed bytes. The policy file stays outside the twelve-file artifact. Preserve an existing CRLF/dirty checkout for review; do not reset, renormalize, rewrite files or change the owner's `core.autocrlf` to obtain a matching digest.
+
 ## Configuration matrix
 
 Configuration is read from the process environment; `.env.example` is documentation and is not loaded automatically. Unknown `NODE_ENV`, malformed numeric values and incompatible options fail startup with a safe fixed error category rather than falling back to development.
@@ -65,11 +89,13 @@ The default `HOST=127.0.0.1` avoids automatic developer-machine exposure. For an
 | `GET /api/debt` | Cached/read-only official Treasury report or explicit unavailable state. |
 | `GET /api/weather?city=Tulsa` | Cached/read-only forecast for an allowlisted city or explicit unavailable state. |
 
-Readiness starts at 503 after each restart. It needs readable reader assets, successful Treasury data within the one-hour freshness window, and at least one observed NWS city within its 30-minute window. Every city that has been observed must still have fresh successful data; an observed failure/stale city makes readiness 503 even if another city is fresh. Unrequested cities are unknown, not falsely reported live. Readiness uses observations from ordinary API requests and does not prove current network connectivity or run an automatic polling loop. Health can remain 200 while readiness is 503. A load balancer that sends traffic only after readiness must not leave a cold process permanently unobserved: after separately authorized staging startup, the operator makes one finite `/api/debt` read and one supported `/api/weather?city=Tulsa` read with compliant NWS identification configured, records their actual HTTP/source timestamps as live evidence, then evaluates readiness. This is manual priming, not a repeating probe or fabricated test data. Use `/api/health` for liveness/restart supervision so initial or upstream-related readiness failure does not cause a restart loop. Health bypasses expensive-request admission, while readiness can return 503 at that admission limit; both still depend on available connection capacity.
+Readiness starts at 503 after each restart. It needs readable reader assets, successful Treasury data within the one-hour freshness window, and at least one observed NWS city within its 30-minute window. Every city that has been observed must still have fresh successful data; an observed failure/stale city makes readiness 503 even if another city is fresh. Unrequested cities are unknown, not falsely reported live. Readiness uses observations from ordinary API requests and does not prove current network connectivity or run an automatic polling loop. Health can remain 200 while readiness is 503. A load balancer that sends traffic only after readiness must not leave a cold process permanently unobserved. After separate authorization for finite live priming, the operator makes one `/api/debt` read and one supported `/api/weather?city=Tulsa` read with a compliant real identifying NWS contact privately configured, records their actual HTTP/source timestamps as live evidence, then evaluates readiness. Staging startup authorization alone does not authorize those live requests. This is manual priming, not a repeating probe or fabricated test data. Use `/api/health` for liveness/restart supervision so initial or upstream-related readiness failure does not cause a restart loop. Health bypasses expensive-request admission, while readiness can return 503 at that admission limit; both still depend on available connection capacity.
 
 A failed refresh may serve the last valid record up to the existing 24-hour stale limit with `stale: true`, preserving source date/update time, retrieval/cache timestamps and attribution. That degraded response is useful to the reader but does not establish readiness. Once no permitted cached record remains, the API returns unavailable; no debt, weather or market value is fabricated. Each official request has bounded attempts/timeouts and safe errors. The explicit HTTP response deadline is `REQUEST_TIMEOUT_MS` (15 seconds by default): on expiry the response is 503 and the relevant observed source becomes unavailable. Underlying bounded upstream work may still settle afterward; its admission slot remains held until it settles, and a late outcome does not mark readiness fresh until a later successful public read. The underlying default retry budget is approximately 24.3 seconds for Treasury and 48.6 seconds for sequential NWS point/forecast reads; configured 10-second attempts allow approximately 60.6 seconds for the latter. Review proxy response timeouts against the HTTP deadline plus a small allowance, and resource/admission limits against the longer bounded upstream work. A restart clears all local caches/observations, which may temporarily reduce upstream sharing and readiness; multiple instances do not share cache or upstream quota state.
 
-The process emits structured whitelisted startup/failure/stop metadata and generates request correlation IDs. It does not log NWS contact strings, bearer credentials, arbitrary request targets/headers or raw provider exceptions. Preserve sanitized local logs according to the future operator's reviewed retention policy. No remote telemetry or monitoring vendor is enabled.
+The process emits structured whitelisted startup/failure/stop metadata and generates request correlation IDs. It does not log NWS contact strings, bearer credentials, arbitrary request targets/headers or raw provider exceptions. R2 bounds routine failure/capacity emission to 100 records per 60,000-ms window by default. A later `operational_logs_suppressed` / `LOG_LIMIT` summary reports a saturating suppression count and consumes routine budget; it is not an unbounded per-request log or a timer-driven emitter. Critical lifecycle categories have a separate finite allowance so repeated source/capacity failures cannot hide startup/stop evidence. Backwards or invalid clock readings cannot reset the allowance. Sink failures and backpressure are contained without creating a growing queue.
+
+Log suppression affects visibility only: it cannot turn an unavailable/stale observation into fresh data, change HTTP results or source retry policy, or authorize any action. A process restart resets these in-memory budgets. Logs can be incomplete under load or sink failure and are neither a durable nor tamper-proof audit. Preserve available sanitized records under the owner's existing reviewed access/retention policy; no new log destination, remote telemetry, paid vendor or ongoing monitoring is enabled.
 
 ## Local build and verification
 
@@ -94,7 +120,7 @@ npm run inspect:public -- dist/public-reader-next
 npm run smoke:public -- dist/public-reader-next
 ```
 
-The default inspect/smoke commands target the default artifact; pass the candidate path as shown when validating another candidate rather than substituting files into an earlier build. The browser suite requires the documented local Playwright/Chromium/axe prerequisites. CI verifies builds/tests and never deploys from `main`. The [DL-006A validation report](DL-006A_VALIDATION.md) records commands actually executed, artifact results, runtime versions and any tooling limitations; a runbook command alone is not evidence that a check passed.
+The default inspect/smoke commands target the default artifact; pass the candidate path as shown when validating another candidate rather than substituting files into an earlier build. The browser suite requires the documented local Playwright/Chromium/axe prerequisites. CI verifies builds/tests and never deploys from `main`. The [DL-006A/W1 validation report](DL-006A_VALIDATION.md) and [DL-006B-R2 validation report](DL-006B-R2_VALIDATION.md) distinguish commands actually executed, artifact/runtime evidence and access limitations. A runbook command alone is not evidence that a check passed, and local fixtures do not prove hosted/live acceptance.
 
 From the inspected artifact directory, the explicit startup command is:
 
@@ -102,7 +128,7 @@ From the inspected artifact directory, the explicit startup command is:
 node --experimental-strip-types src/public/main.ts
 ```
 
-Set staging/production variables privately before that command. A local development smoke can omit NWS identification and confirm unavailable weather/readiness behavior; it must not present missing-source readiness as success. For compliant live checks, provide the owner's actual identifying contact without printing it, request only one debt response and a single supported weather city, and record source timestamps/HTTP status separately from deterministic fixture results. Do not activate live news ingestion or use paid providers.
+Set staging/production variables privately before that command. A local development smoke can omit NWS identification and confirm unavailable weather/readiness behavior; it must not present missing-source readiness as success. Only after separate authorization for compliant live checks, provide the owner's actual identifying contact without printing it, request only one debt response and a single supported weather city, and record source timestamps/HTTP status separately from deterministic fixture results. Do not activate live news ingestion or use paid providers.
 
 ## Windows local acceptance
 
@@ -228,6 +254,56 @@ Check homepage, safe assets and official panels; distinguish `/api/health` from 
 
 The source checkout's opt-in fictional edition remains development-only and is absent from the artifact. Repeat and record the relevant W1 Windows physical/browser checks, including native zoom and navigation; keyboard/assistive-technology coverage not already demonstrated remains separate. Automated Chromium/axe and simulated Windows tests do not certify WCAG conformance or prove an actual Windows rerun. Foundation 001 acceptance and the owner's original DL-006A results remain historical acceptance.
 
+### W2 cross-platform artifact reacceptance
+
+The owner reported an actual R2 Windows run with Node 22.16.0, 666 passes, six capability skips and zero failures out of 672 tests, plus passing staging/production smoke. Its artifact digest differed from Linux; `core.autocrlf=true` and `i/lf w/crlf attr/` established checkout conversion as a reproducibility mechanism. Those results remain historical acceptance of R2. The [W2 validation report](DL-006B-R2-W2_VALIDATION.md) records both original digests and the new reviewed candidate; Linux temporary-repository tests alone do not establish W2 Windows acceptance.
+
+After a separately authorized handoff makes the reviewed W2 commit available, use a new isolated Windows checkout at that exact commit. Preserve every existing checkout, index and artifact. Record clean status, branch, HEAD, source tree, `git config --show-origin --get core.autocrlf` and Node version without changing system/global/local owner settings. Use the side-by-side Node 22.16.0 selection above. Verify every explicit policy path before building:
+
+```powershell
+$lfInputs = @(
+    '.gitattributes', 'package.json',
+    'src/public/config.ts', 'src/public/main.ts', 'src/public/reader.ts', 'src/public/lifecycle.ts',
+    'src/cache.ts', 'src/official-data.ts',
+    'public/index.html', 'public/style.css', 'public/app.js', 'public/stories.js'
+)
+git check-attr text eol -- $lfInputs
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify effective LF attributes.' }
+git ls-files --eol -- $lfInputs
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify checkout line endings.' }
+foreach ($lfInput in $lfInputs) {
+    if ([IO.File]::ReadAllBytes((Join-Path (Get-Location).Path $lfInput)) -contains 13) {
+        throw ('Carriage return found in policy input: ' + $lfInput)
+    }
+}
+```
+
+Record `text: set`, `eol: lf` and LF working-tree bytes for every path; stop if any differ. Do not repair the original checkout or run renormalization. Configuration-sensitive automated cases may change Git settings only inside their disposable test repositories, never in the owner's repository or global/system configuration.
+
+Run locked installation, typechecking and the full suite with the explicit Node 22.16.0 toolchain above; report actual passes/skips/failures. Build into two unused W2 artifact paths, then inspect and staging/production smoke-test each using that same executable. For both manifests record exact reviewed commit/tree, `sourceDirty: false`, twelve physical files, every runtime/package hash and content digest. The two outputs must match each other and the clean committed W2 evidence for that exact source commit. Run the offline release checker for each with those reviewed SHA/digest values and an independently retained previous-version record; passing still grants no deployment authority. A mismatch is a blocker, not permission to normalize source or replace the expected digest. Record actual Windows results, then repeat the applicable physical reader checks under their separate live-data authorization. No Render action or PR update is part of this procedure.
+
+## Offline candidate release check
+
+The local `check:staging-release` tool is outside the public artifact and makes no network or provider calls. It inspects a candidate against an explicit clean reviewed commit and content digest, the exact runtime/twelve-file contract, a valid staging HTTPS origin, an explicit `autoDeploy: false` declaration and a previous-version identity record. The previous identity and automatic-deploy declaration are operator inputs, not authenticated Render evidence. The tool cannot establish that a previous deployment was healthy or that provider settings match the declaration.
+
+After building, inspecting and smoke-testing a clean candidate, write a local checklist in an operator-owned evidence/temp directory outside the source checkout. Replace every angle-bracket placeholder below with independently reviewed values; the template is intentionally invalid until populated. It contains no secret or NWS contact:
+
+```json
+{
+  "artifactRoot": "<absolute-inspected-candidate-directory>",
+  "expectedCommit": "<reviewed-40-character-commit>",
+  "expectedDigest": "<candidate-64-character-content-digest>",
+  "stagingUrl": "https://dayline-xd4l.onrender.com",
+  "previous": {
+    "commit": "<previous-known-good-40-character-commit>",
+    "contentDigest": "<previous-retained-64-character-content-digest>"
+  },
+  "autoDeploy": false
+}
+```
+
+Run `npm run check:staging-release -- --checklist <local-checklist-path>` under the selected Node 22.16.0 build/test environment. The CLI reads a bounded local JSON file and returns sanitized fixed-schema results or failure categories without echoing raw paths or URLs. A successful result still states `manualAuthorizationRequired: true`, `externalDeploymentAuthorized: false`, `hostedAcceptanceVerified: false`, `renderSettingsVerified: false`, `previousArtifactVerified: false` and `automaticRollbackAllowed: false`. It never performs the trigger, changes settings or replaces operator review. A previous version's retained artifact must be inspected separately; a commit/digest string alone is not known-good evidence.
+
 ## Prepared staging release gate — manual authorization required
 
 Complete and review all items before any external operation:
@@ -235,21 +311,23 @@ Complete and review all items before any external operation:
 - Identify the reviewed clean source commit and a verified deterministic artifact; retain manifest/content hashes outside the mutable runtime.
 - Review the explicit artifact inventory/import boundary and ensure no environment file, credential, local repository, fixture or internal service is present.
 - Pass the automated suites, artifact startup/shutdown/isolation checks and required physical/live acceptance; record any remaining blocker.
-- Select and review hosting, exact Node runtime provisioning, non-root account, read-only files, resource limits, TLS/reverse-proxy rules, outbound official API access and private NWS contact injection.
+- Reconfirm the existing staging service identity, owner-visible Free limits, deployed source, disabled automatic deployments, exact Node runtime provisioning, non-root/filesystem policy, resource limits, HTTPS/reverse-proxy behavior and private NWS identification through existing read-only provider access. Record verification without changing any setting.
 - Review display/attribution/demonstration policy, source API terms, privacy/security/accessibility and relevant retention controls.
-- Prepare the prior known-good version, operator ownership, rollback decision thresholds, log access and incident/restart procedure.
+- Record the previous known-good provider deployment identifier from actual retained/dashboard evidence, its exact source commit and inspected artifact digest, the current setting-name mapping, operator ownership, rollback thresholds and sanitized incident evidence. The supplied eb574d0 baseline is a starting identity, not an invented provider deployment ID or independently verified retained artifact.
 - Obtain explicit owner authorization for the exact external transfer/deployment and any DNS/firewall changes. No current task, Git commit, passing CI or merge implies this approval.
 
-Only after that authorization, place the inspected candidate in a new immutable release/version directory using the selected platform's approved process. Verify hashes after transfer, start it under the unprivileged account on an explicitly restricted port, and smoke-test directly before proxy promotion. Confirm reader/static/API method rules, internal/development route absence, health/readiness semantics, graceful termination and compliant official-source behavior. Do not send real production credentials to any synthetic/editorial route. Promote through an atomic platform release switch only after the candidate's acceptance evidence is reviewed; retain the previous version and its configuration mapping.
+For the existing Render service, a future authorization must name the exact service, source SHA, candidate digest, previous known-good identity and manual trigger. Recheck that automatic deployment is disabled immediately before the authorized action. Use only the owner-approved existing manual deployment control; this runbook and local scripts do not execute it, change the tracked branch/build command or enable deployment from main. Confirm the provider is deploying the exact reviewed SHA rather than an unchecked latest branch tip. If that cannot be confirmed, stop.
+
+Only after that authorization, place the inspected candidate in a new immutable release/version directory using the selected platform's approved process. Verify hashes after transfer, start it under the unprivileged account on an explicitly restricted port, and smoke-test directly before proxy promotion. Validate the configured staging origin as HTTPS, with the expected hostname and no embedded credentials, path, query or fragment. Confirm reader/static/API method rules, internal/development route absence and health/readiness behavior. Perform any government-data priming/regression only under its separate finite live-check authorization with compliant identification, recording actual HTTP/source timestamps. A cold or restarted process can correctly report health 200/readiness 503 before those observations; that alone is not release failure. Preserve the known-good release until acceptance of runtime identity, route isolation, bounded shutdown and any specifically authorized live checks is recorded. Do not send real production credentials to any synthetic/editorial route. Promote through an atomic platform release switch only after the candidate's acceptance evidence is reviewed; retain the previous version and its configuration mapping.
 
 ## Restart, rollback and previous-version recovery
 
 Use the future selected supervisor's bounded restart policy with backoff and an attempt ceiling; do not loop endlessly on invalid configuration or an upstream outage. Treat configuration failure as a release blocker. On POSIX, SIGTERM/SIGINT stops acceptance, drains admitted requests up to the configured deadline, then closes remaining sockets. Windows console/service-manager termination must be accepted for the selected host separately; the local controlled IPC harness verifies the close path without claiming identical signal delivery. Match the supervisor grace period to that deadline with a small allowance. Upstream-only failures should be diagnosed through readiness/source status rather than falsely marked healthy data or automatically triggering an uncontrolled restart storm.
 
-Rollback triggers include wrong artifact/hash, unexpected public route or secret exposure, invalid configuration, startup/shutdown failure, reader regression or unaccepted source/readiness behavior. Stop admission to the candidate through the selected platform's controlled release switch. Restore the previous inspected version directory and its reviewed configuration atomically, start/check it under the same least-privilege policy, then verify health, source observations and route isolation before returning traffic. Restarting either version clears cache; a temporary 503 readiness state is expected until valid samples are observed. This reader stores no newsroom or payment data, so no application database rollback is part of this procedure.
+Rollback review triggers include a confirmed wrong artifact/hash/source commit, unexpected public route or secret exposure, invalid configuration, persistent startup/shutdown defect or a reproducible reader regression attributable to the candidate. An initial cold-start delay or an unknown/stale/upstream-related readiness 503 does not automatically trigger rollback. First distinguish application/asset/configuration failure from admission saturation, source outage, proxy access and restart state using bounded sanitized evidence. If attribution remains unresolved, stop and request owner review rather than select a deployment automatically. A rollback is an external deployment action and needs separate explicit authorization. Identify the retained known-good provider deployment, source SHA and artifact digest from actual evidence; do not guess an ID or use an unreviewed branch tip. Reconfirm service identity and that automatic deployment remains disabled. Only after authorization, use the existing provider's owner-approved manual rollback/redeploy control, then verify the selected prior identity and acceptance results. This task does not invoke that control. Stop admission to the candidate through the selected platform's controlled release switch. Restore the previous inspected version directory and its reviewed configuration atomically, start/check it under the same least-privilege policy, then verify health, source observations and route isolation before returning traffic. Restarting either version clears cache; a temporary 503 readiness state is expected until valid samples are observed. This reader stores no newsroom or payment data, so no application database rollback is part of this procedure.
 
 If the previous runtime files are lost, obtain the previously reviewed commit in a separately authorized clean checkout/worktree, verify identity/commit and rebuild/inspect into a new output directory, comparing retained manifest/content hashes before promotion. Preserve failed candidate files and sanitized evidence; do not reset, stash, clean or overwrite a checkout with protected work. If an artifact/configuration mismatch cannot be explained, stop and seek review rather than silently substituting a new build. No recovery command in this document is executed by this milestone.
 
 ## Outstanding launch blockers
 
-No external deployment, image registry upload, production DNS/firewall configuration, real identity provider, paid observability, live news ingestion, production scheduler, model/audio generation, publication or payment activation has been performed. A reviewed staging host/proxy/UID/resource policy, current source API compatibility/identification, accepted physical/accessibility checks, operational ownership and explicit release authorization remain necessary. Production editorial identity/authorization, licensing, durable storage and publication controls remain separately blocked; publishing the reader artifact would not complete them.
+The owner reports the existing Free staging service above. DL-006B-R2 performs no deployment/rollback, provider/account/plan/env mutation, image registry upload, DNS/TLS/firewall change, real identity activation, paid observability, live news ingestion, production scheduler, model/audio generation, publication or payment activation. Current provider configuration/hosted health could not be independently verified through the cloud proxy. Before another external release, confirm the existing service/runtime/proxy/UID/resource policy, accepted physical/accessibility checks, previous known-good evidence, operational ownership and exact manual authorization. Compliant live Treasury/NWS validation is separate from deterministic fixtures and is not automatically authorized here. Production editorial identity/authorization, licensing, durable storage and publication controls remain separately blocked; publishing the reader artifact would not complete them.

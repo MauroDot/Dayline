@@ -7,22 +7,80 @@ import { parsePublicConfiguration, PublicConfigurationError } from './config.ts'
 import { createPublicServer, type SafePublicEvent } from './reader.ts';
 import { attachPublicLifecycle, type LifecycleEvent } from './lifecycle.ts';
 
-const events = new Set(['public_started', 'public_start_failed', 'public_stopping', 'public_stopped', 'public_shutdown_forced', 'public_shutdown_failed', 'upstream_failure', 'request_failure', 'capacity_rejected']);
-const codes = new Set(['INVALID_ENVIRONMENT','INVALID_PORT','INVALID_BIND_ADDRESS','INVALID_NWS_IDENTIFICATION','INVALID_PUBLIC_BASE_URL','DEVELOPMENT_CONFIGURATION_FORBIDDEN','INVALID_TIMEOUT','INVALID_CAPACITY','PUBLIC_START_FAILED','INVALID_PUBLIC_ARTIFACT','UNSUPPORTED_PUBLIC_RUNTIME','SHUTDOWN_TIMEOUT','SHUTDOWN_FAILED','UNAVAILABLE','TIMEOUT','INTERNAL','CAPACITY']);
+const lifecycleEvents = new Set(['public_started', 'public_start_failed', 'public_stopping', 'public_stopped', 'public_shutdown_forced', 'public_shutdown_failed']);
+const events = new Set([...lifecycleEvents, 'upstream_failure', 'request_failure', 'capacity_rejected', 'operational_logs_suppressed']);
+const codes = new Set(['INVALID_ENVIRONMENT','INVALID_PORT','INVALID_BIND_ADDRESS','INVALID_NWS_IDENTIFICATION','INVALID_PUBLIC_BASE_URL','DEVELOPMENT_CONFIGURATION_FORBIDDEN','INVALID_TIMEOUT','INVALID_CAPACITY','PUBLIC_START_FAILED','INVALID_PUBLIC_ARTIFACT','UNSUPPORTED_PUBLIC_RUNTIME','SHUTDOWN_TIMEOUT','SHUTDOWN_FAILED','UNAVAILABLE','TIMEOUT','INTERNAL','CAPACITY','UPSTREAM_HTTP','UPSTREAM_RESPONSE_INVALID','UPSTREAM_REQUEST_FAILED']);
+const maximumSuppressed = 1_000_000;
 type LogInput = Record<string, unknown> | SafePublicEvent | LifecycleEvent;
 /** Fixed-schema local logs. Incoming headers, URLs, environment values and raw exceptions are absent. */
 export function safePublicLog(input: LogInput): Record<string, unknown> {
-  const value = input as Record<string, unknown>;
-  const output: Record<string, unknown> = { event: typeof value.event === 'string' && events.has(value.event) ? value.event : 'request_failure' };
-  if (typeof value.requestId === 'string' && /^[a-f0-9-]{36}$/.test(value.requestId)) output.requestId = value.requestId;
-  if (typeof value.code === 'string' && codes.has(value.code)) output.code = value.code;
-  if (value.source === 'treasury' || value.source === 'nws') output.source = value.source;
-  if (['development', 'staging', 'production'].includes(String(value.mode))) output.mode = value.mode;
-  if (['127.0.0.1', '::1', '0.0.0.0'].includes(String(value.host))) output.host = value.host;
-  if (Number.isSafeInteger(value.port) && (value.port as number) >= 1 && (value.port as number) <= 65535) output.port = value.port;
-  if (typeof value.revision === 'string' && (value.revision === 'unpackaged' || /^[a-f0-9]{40}$/.test(value.revision))) output.revision = value.revision;
-  if (typeof value.sourceDirty === 'boolean') output.sourceDirty = value.sourceDirty;
-  return output;
+  try {
+    // Read data properties only. A logger must not evaluate an exception's getter or coercion hook.
+    const descriptors = input && typeof input === 'object' ? Object.getOwnPropertyDescriptors(input) : {};
+    const own = (key: string): unknown => descriptors[key] && Object.hasOwn(descriptors[key], 'value') ? descriptors[key].value : undefined;
+    const event = own('event'), requestId = own('requestId'), code = own('code'), source = own('source');
+    const mode = own('mode'), host = own('host'), port = own('port'), revision = own('revision'), sourceDirty = own('sourceDirty');
+    const output: Record<string, unknown> = { event: typeof event === 'string' && events.has(event) ? event : 'request_failure' };
+    if (typeof requestId === 'string' && /^[a-f0-9-]{36}$/.test(requestId)) output.requestId = requestId;
+    if (typeof code === 'string' && codes.has(code)) output.code = code;
+    if (source === 'treasury' || source === 'nws') output.source = source;
+    if (typeof mode === 'string' && ['development', 'staging', 'production'].includes(mode)) output.mode = mode;
+    if (typeof host === 'string' && ['127.0.0.1', '::1', '0.0.0.0'].includes(host)) output.host = host;
+    if (Number.isSafeInteger(port) && (port as number) >= 1 && (port as number) <= 65535) output.port = port;
+    if (typeof revision === 'string' && (revision === 'unpackaged' || /^[a-f0-9]{40}$/.test(revision))) output.revision = revision;
+    if (typeof sourceDirty === 'boolean') output.sourceDirty = sourceDirty;
+    if (output.event === 'operational_logs_suppressed') {
+      output.code = 'LOG_LIMIT';
+      const suppressed = own('suppressed');
+      if (Number.isSafeInteger(suppressed) && (suppressed as number) > 0 && (suppressed as number) <= maximumSuppressed) output.suppressed = suppressed;
+    }
+    return output;
+  } catch { return { event: 'request_failure' }; }
+}
+
+export interface PublicOperationalLogOptions {
+  sink?: (event: Record<string, unknown>) => unknown;
+  now?: () => number;
+  maxEventsPerWindow?: number;
+  windowMs?: number;
+}
+/** A fixed-rate local log, not an audit trail or outbound telemetry client. */
+export function createPublicOperationalLogger(options: PublicOperationalLogOptions = {}): (event: LogInput) => void {
+  const limit = options.maxEventsPerWindow ?? 100, windowMs = options.windowMs ?? 60_000;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000 || !Number.isSafeInteger(windowMs) || windowMs < 1 || windowMs > 3_600_000) throw Error('INVALID_LOG_CONFIGURATION');
+  const now = options.now ?? (() => performance.now());
+  const sink = options.sink ?? (event => {
+    // Respect stdout backpressure instead of building an application-side output queue.
+    if (!process.stdout.destroyed && !process.stdout.writableNeedDrain) process.stdout.write(JSON.stringify(event) + '\n');
+  });
+  let windowStarted: number | undefined, emitted = 0, suppressed = 0;
+  const emittedLifecycle = new Set<string>(); // At most the six fixed lifecycle event names.
+  const emit = (event: Record<string, unknown>) => {
+    try {
+      // Custom test/operator sinks are trusted, but rejected async work must not escape as an unhandled error.
+      void Promise.resolve(sink(event)).catch(() => undefined);
+    } catch { /* Local logs remain best effort and cannot change HTTP/shutdown outcomes. */ }
+  };
+  return input => {
+    const safe = safePublicLog(input), event = safe.event as string;
+    if (lifecycleEvents.has(event)) {
+      if (!emittedLifecycle.has(event)) { emittedLifecycle.add(event); emit(safe); }
+      return;
+    }
+    let at: number | undefined;
+    try { const value = now(); if (Number.isFinite(value) && value >= 0) at = value; } catch {}
+    // Invalid or backwards clocks never replenish the budget. No timer or unbounded category map is created.
+    if (windowStarted === undefined) windowStarted = at ?? 0;
+    if (at !== undefined && at - windowStarted >= windowMs) {
+      windowStarted = at; emitted = 0;
+      if (suppressed > 0) {
+        emit(safePublicLog({ event: 'operational_logs_suppressed', suppressed }));
+        emitted++; suppressed = 0;
+      }
+    }
+    if (emitted >= limit) { suppressed = Math.min(suppressed + 1, maximumSuppressed); return; }
+    emitted++; emit(safe);
+  };
 }
 /** Packaged deployments use the exact runtime recorded by the artifact; source development is separate. */
 export function assertPackagedRuntimeVersion(version = process.versions.node): void {
@@ -62,7 +120,7 @@ export interface StartPublicRuntimeOptions {
 export async function startPublicRuntime(options: StartPublicRuntimeOptions = {}) {
   const config = parsePublicConfiguration(options.environment ?? process.env);
   const metadata = await readPublicProvenance();
-  const log = (event: LogInput) => { const safe = safePublicLog(event); try { if (options.log) options.log(safe); else process.stdout.write(JSON.stringify(safe) + '\n'); } catch { /* Logs are best effort, not an audit guarantee. */ } };
+  const log = createPublicOperationalLogger({ sink: options.log, now: options.now });
   const server = createPublicServer({ config, fetcher: options.fetcher, now: options.now, staticRoot: options.staticRoot, log });
   const lifecycle = attachPublicLifecycle(server, { shutdownTimeoutMs: config.shutdownTimeoutMs, log });
   try {

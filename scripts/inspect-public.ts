@@ -24,6 +24,10 @@ export class ArtifactError extends Error {
   constructor(code: string) { super(code); this.name = 'ArtifactError'; }
 }
 export function sha256(bytes: Uint8Array | string): string { return createHash('sha256').update(bytes).digest('hex'); }
+/** The public allowlist is text only. Reject noncanonical checkout bytes; never rewrite them. */
+export function rejectNonLFText(bytes: Buffer): void {
+  if (bytes.includes(0x0d)) throw new ArtifactError('PUBLIC_LINE_ENDING_INVALID');
+}
 export function rejectEmbeddedCredentials(bytes: Buffer): void {
   const text = bytes.toString('utf8');
   if ([/-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/,
@@ -140,6 +144,7 @@ export async function inspectPublicArtifact(root = path.resolve('dist/public-rea
       || !Number.isSafeInteger(metadata.bytes) || (metadata.bytes as number) < 0) throw new ArtifactError('PUBLIC_MANIFEST_INVALID');
     const bytes = await regularBytes(root, name);
     if (bytes.byteLength !== metadata.bytes || sha256(bytes) !== metadata.sha256) throw new ArtifactError('PUBLIC_HASH_MISMATCH');
+    rejectNonLFText(bytes);
     rejectEmbeddedCredentials(bytes);
     files.set(name, bytes);
   }
