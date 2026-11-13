@@ -149,3 +149,15 @@
 - [ ] Complete physical browser/assistive-technology and Windows acceptance separately where not executed locally.
 - [ ] Review explicit source-read object/tenant authorization, production identity/storage, external-copy retention and real-provider contracts before real-source integration.
 - [ ] Obtain separate authorization for remote promotion, Render changes, provider activation or publication; none is part of the fictional queue.
+
+## DL-007B — Authenticated editorial source access
+
+- [x] Add narrow `SOURCE_READ` for editors/managing editors and exact `SOURCE` assignments using stored source IDs; no implicit reporter/administrator access, wildcard grants or new editorial authority.
+- [x] Filter authorized candidates before deterministic views/pagination; suppress inaccessible origin links and bind cursors to current session, policy epoch, effective grants and authorized rights/provenance/retention state.
+- [x] Recheck fresh repository/session/role/resource state under the shared writer lock and provide a synchronous final disclosure guard; preserve retention/quarantine and metadata redaction.
+- [x] Add only GET/HEAD source inspection to the existing opt-in synthetic development listener, preserving transport restrictions and public-route isolation.
+- [x] Add a temporary fictional source-access demonstration with assigned-editor success, unassigned-editor/admin denial, revocation and no advancement/publication; print no credentials or private claims.
+- [x] Preserve public twelve-file packaging, LF policy and exclusion of all private source-access code, fixtures and tests.
+- [x] Record actual exact-Node-22.16.0 validation, race/authorization outcomes, artifact digest/reproducibility and skips in [DL-007B validation](DL-007B_VALIDATION.md).
+- [ ] Complete remaining Windows/physical acceptance and production identity, exclusive guarded routing, tenant/assignment lifecycle, storage and external-copy retention review before activation.
+- [ ] Obtain separate authorization for remote promotion, Render changes, provider activation or publication.
