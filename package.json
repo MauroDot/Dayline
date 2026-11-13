@@ -18,7 +18,8 @@
     "build:public": "node --experimental-strip-types scripts/build-public.ts",
     "inspect:public": "node --experimental-strip-types scripts/inspect-public.ts",
     "start:public": "node --experimental-strip-types dist/public-reader/src/public/main.ts",
-    "smoke:public": "node --experimental-strip-types scripts/smoke-public.ts"
+    "smoke:public": "node --experimental-strip-types scripts/smoke-public.ts",
+    "check:staging-release": "node --experimental-strip-types scripts/check-staging-release.ts"
   },
   "devDependencies": {
     "@types/node": "22.19.15",

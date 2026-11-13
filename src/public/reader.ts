@@ -14,7 +14,15 @@ const debtTTL = 60 * 60 * 1000, weatherTTL = 30 * 60 * 1000;
 const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
   'Cross-Origin-Resource-Policy': 'same-origin' };
-export interface SafePublicEvent { event: 'upstream_failure' | 'request_failure' | 'capacity_rejected'; requestId: string; source?: 'treasury' | 'nws'; code: 'UNAVAILABLE' | 'TIMEOUT' | 'INTERNAL' | 'CAPACITY' }
+type SourceFailureCode = 'UNAVAILABLE' | 'UPSTREAM_HTTP' | 'UPSTREAM_RESPONSE_INVALID' | 'UPSTREAM_REQUEST_FAILED';
+export interface SafePublicEvent { event: 'upstream_failure' | 'request_failure' | 'capacity_rejected'; requestId: string; source?: 'treasury' | 'nws'; code: SourceFailureCode | 'TIMEOUT' | 'INTERNAL' | 'CAPACITY' }
+/** Categorize only the adapter's fixed error vocabulary; never log its text or a response body. */
+function sourceFailureCode(error: string): SourceFailureCode {
+  if (/^Upstream HTTP \d{3}$/.test(error)) return 'UPSTREAM_HTTP';
+  if (/^Upstream request failed(?: or timed out)?$/.test(error)) return 'UPSTREAM_REQUEST_FAILED';
+  if (/^(?:Invalid |Debt component mismatch|Unexpected NWS|Incomplete NWS|Unsupported NWS)/.test(error)) return 'UPSTREAM_RESPONSE_INVALID';
+  return 'UNAVAILABLE';
+}
 export interface PublicServerOptions {
   config: PublicConfiguration;
   fetcher?: FetchLike;
@@ -34,6 +42,8 @@ export function createPublicServer(options: PublicServerOptions): http.Server {
   const weatherCaches = new Map(availableCities.map(city => [city, createCache(weatherTTL)]));
   let debt: Observation | undefined;
   const weather = new Map<string, Observation>();
+  let debtFailure: SourceFailureCode = 'UNAVAILABLE';
+  const weatherFailures = new Map<string, SourceFailureCode>(availableCities.map(city => [city, 'UNAVAILABLE']));
   let concurrent = 0;
   const now = options.now ?? Date.now;
   const log = (event: SafePublicEvent) => { try { options.log?.(event); } catch { /* Logging cannot change an HTTP outcome. */ } };
@@ -86,17 +96,18 @@ export function createPublicServer(options: PublicServerOptions): http.Server {
           source = 'treasury';
           try {
             const result = await debtCache(async () => {
+              debtFailure = 'UNAVAILABLE';
               const value = await getDebt(options.fetcher, {timeoutMs: config.upstreamTimeoutMs});
-              if (!value.ok) throw Error('UNAVAILABLE');
+              if (!value.ok) { debtFailure = sourceFailureCode(value.error); throw Error('UNAVAILABLE'); }
               return {...value.value, fetchedAt: value.fetchedAt};
             }, now());
             if (deadline) return;
             debt = {state: result.stale ? 'stale' : 'fresh', expiresAt: Date.parse(result.cachedAt) + debtTTL};
-            if (result.stale) log({event: 'upstream_failure', requestId, source, code: 'UNAVAILABLE'});
+            if (result.stale) log({event: 'upstream_failure', requestId, source, code: debtFailure});
             json(200, {source: 'U.S. Treasury Fiscal Data', ...result});
           } catch {
             debt = {state: 'unavailable', expiresAt: 0};
-            log({event: 'upstream_failure', requestId, source, code: 'UNAVAILABLE'});
+            log({event: 'upstream_failure', requestId, source, code: debtFailure});
             json(503, {error: 'Official debt data currently unavailable'});
           }
           return;
@@ -113,17 +124,18 @@ export function createPublicServer(options: PublicServerOptions): http.Server {
           }
           try {
             const result = await cached(async () => {
+              weatherFailures.set(requested, 'UNAVAILABLE');
               const value = await getWeather(requested, options.fetcher, {timeoutMs: config.upstreamTimeoutMs, userAgent: ua});
-              if (!value.ok) throw Error('UNAVAILABLE');
+              if (!value.ok) { weatherFailures.set(requested, sourceFailureCode(value.error)); throw Error('UNAVAILABLE'); }
               return {...value.value, fetchedAt: value.fetchedAt};
             }, now());
             if (deadline) return;
             weather.set(city, {state: result.stale ? 'stale' : 'fresh', expiresAt: Date.parse(result.cachedAt) + weatherTTL});
-            if (result.stale) log({event: 'upstream_failure', requestId, source, code: 'UNAVAILABLE'});
+            if (result.stale) log({event: 'upstream_failure', requestId, source, code: weatherFailures.get(requested) ?? 'UNAVAILABLE'});
             json(200, {source: 'National Weather Service', ...result});
           } catch {
             weather.set(city, {state: 'unavailable', expiresAt: 0});
-            log({event: 'upstream_failure', requestId, source, code: 'UNAVAILABLE'});
+            log({event: 'upstream_failure', requestId, source, code: weatherFailures.get(requested) ?? 'UNAVAILABLE'});
             json(503, {error: 'Official weather data currently unavailable'});
           }
           return;
