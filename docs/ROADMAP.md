@@ -135,3 +135,17 @@
 - [ ] Editorial policy, rights review, accessibility, privacy and security checks.
 - [ ] Operational rollback, budget thresholds, billing incident response.
 - [ ] Explicit authorization for public release, production API usage and live payments.
+
+## DL-007A — Internal news discovery and editorial source queue
+
+- [x] Read-only projection of existing schema-7 managed sources, quarantine, provenance, deletion markers and retention hold; no parallel source database.
+- [x] Deterministic recent, unresolved, related, eligible, blocked and withdrawn views, safe opaque references, fixed reasons and bounded pagination with stale-snapshot invalidation.
+- [x] Fresh policy/metadata/retention validation and identity minimization; preserve original retrieval/deletion deadlines and anonymous duplicate audits.
+- [x] Explicit `canAdvance: false` on every row; no automatic approval, publication or independent-report count from syndicated copies.
+- [x] Temporary invented fixture CLI and opt-in responsive loopback development inspection; no actual repository exposed through HTTP and no live provider request.
+- [x] Preserve existing authentication/resource scope, public twelve-file artifact and LF policy; queue code/assets remain outside the public runtime.
+- [x] Document future licensing decisions for commercial/display/attribution/retention/deletion/derived/AI/narration/syndication uses without approving a real provider.
+- [x] Local Node 22.16.0 validation: TypeScript, **772/772** backend/domain/security tests and **27/27** Chromium tests passed; public artifact reproducibility, inspection, startup/shutdown and route isolation passed. See [DL-007A validation](DL-007A_VALIDATION.md) for evidence and remaining acceptance.
+- [ ] Complete physical browser/assistive-technology and Windows acceptance separately where not executed locally.
+- [ ] Review explicit source-read object/tenant authorization, production identity/storage, external-copy retention and real-provider contracts before real-source integration.
+- [ ] Obtain separate authorization for remote promotion, Render changes, provider activation or publication; none is part of the fictional queue.

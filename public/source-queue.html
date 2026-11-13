@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173d33">
+  <meta name="description" content="Historical, invented source candidates for Dayline development inspection.">
+  <title>Fictional source queue — Dayline</title>
+  <link rel="stylesheet" href="/dev/source-queue/source-queue.css">
+  <script type="module" src="/dev/source-queue/source-queue.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#queue-main">Skip to source queue</a>
+  <div class="development-banner"><div class="wrap">Fictional · Development only · Historical fixture</div></div>
+  <header class="wrap masthead"><a class="brand" href="/" aria-label="Dayline homepage">dayline<span>.</span></a><a href="/">Back to the homepage →</a></header>
+  <main id="queue-main" class="wrap" tabindex="-1">
+    <div class="intro"><p class="eyebrow">Internal newsroom / Fictional inspection</p><h1>The source queue<span>.</span></h1><p class="introduction">Inspect the origin, rights and retention of invented source candidates before editorial work begins.</p></div>
+    <aside class="boundary" aria-labelledby="boundary-heading"><h2 id="boundary-heading">Discovery begins a review.</h2><p>This isolated demonstration contains fictional records as of <time id="queue-as-of">1 June 2026, 12:00 UTC</time>. It does not connect to a newsroom repository or a live news provider.</p><p>Eligibility describes the source metadata at that historical time. Discovery, a headline and syndicated copies do not establish truth, independent reporting or publication rights. This inspection tool cannot approve, advance or publish a candidate.</p></aside>
+    <div class="controls">
+      <div class="field"><label for="queue-view">Queue view</label><select id="queue-view"><option value="RECENT">Recent discoveries</option><option value="UNRESOLVED">Unresolved provenance</option><option value="RELATED">Duplicate / syndication review</option><option value="ELIGIBLE">Eligible managed sources</option><option value="BLOCKED">Blocked / quarantined candidates</option><option value="WITHDRAWN">Expired / withdrawn records</option></select></div>
+      <div class="field"><label for="queue-limit">Candidates per page</label><select id="queue-limit"><option value="3">3 candidates</option><option value="6" selected>6 candidates</option><option value="12">12 candidates</option></select></div>
+      <button id="queue-refresh" type="button">Refresh queue ↻</button>
+    </div>
+    <div class="results-header"><h2 id="queue-results-heading" tabindex="-1">Source candidates</h2><span id="queue-page"></span></div>
+    <p id="queue-status" role="status" aria-live="polite" aria-atomic="true" tabindex="-1" data-state="loading">Loading the fictional source queue…</p>
+    <div id="queue-content" aria-busy="true"></div>
+    <nav class="pagination" aria-label="Source queue pages"><button id="queue-first" type="button">Return to first page</button><button id="queue-next" type="button" disabled>Next page →</button></nav>
+  </main>
+  <footer class="wrap"><p>Invented sources. Historical rights. Human editorial review remains required.</p><a href="#queue-main">Back to the top ↑</a></footer>
+</body>
+</html>
