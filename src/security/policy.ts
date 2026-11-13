@@ -4,7 +4,7 @@ import { opaque, SecurityError, sessionTimestamp, validateClaims } from './verif
 export { SecurityError, validateClaims } from './verifier.ts';
 
 const reporter: readonly Permission[] = ['STORY_CREATE', 'STORY_EDIT', 'EDITION_ASSEMBLE'];
-const editor: readonly Permission[] = [...reporter, 'STORY_REVIEW', 'DRAFT_REVIEW', 'EDITION_REVIEW', 'SCHEDULE_EXECUTE'];
+const editor: readonly Permission[] = [...reporter, 'STORY_REVIEW', 'DRAFT_REVIEW', 'EDITION_REVIEW', 'SCHEDULE_EXECUTE', 'SOURCE_READ'];
 export const permissionMatrix: Readonly<Record<Role, readonly Permission[]>> = Object.freeze({
   REPORTER: Object.freeze([...reporter]),
   EDITOR: Object.freeze([...editor]),

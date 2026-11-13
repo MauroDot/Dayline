@@ -7,6 +7,9 @@ import { JsonRepository } from '../newsroom/store.ts';
 import type { Story, State } from '../newsroom/model.ts';
 import type { EditionStatus, PlacementInput } from '../editions/types.ts';
 import { AuthenticatedEditorial } from './editorial.ts';
+import { AuthenticatedSourceQueue } from './source.ts';
+import { SourceQueueError } from '../source-queue/service.ts';
+import { sourceQueueViews, type SourceQueueQuery } from '../source-queue/types.ts';
 import { AccessControl } from './service.ts';
 import { permissionMatrix } from './policy.ts';
 import { SecurityError } from './verifier.ts';
@@ -24,6 +27,7 @@ export interface InternalEditorialHTTPOptions {
 export interface InternalEditorialHTTP { readonly origin: string; close(): Promise<void> }
 const bodyLimit = 16_384;
 const bodyTimeout = 1000;
+const sourceResponseLimit = 262_144;
 const idPattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 class RequestError extends Error {
   readonly status: number;
@@ -50,7 +54,30 @@ export function validateInternalRequest(request: Pick<IncomingMessage, 'socket' 
   if (Object.keys(request.headers).some(name => ['cookie', 'forwarded', 'transfer-encoding', 'expect', 'upgrade'].includes(name)
     || name.startsWith('x-forwarded-') || name.startsWith('access-control-request-'))) reject(403, 'FORBIDDEN');
   if (request.headers['sec-fetch-site'] !== undefined && !['same-origin', 'none'].includes(String(request.headers['sec-fetch-site']))) reject(403, 'FORBIDDEN');
-  if (typeof request.url !== 'string' || request.url.length > 512 || !request.url.startsWith('/') || /[?#%\\]/.test(request.url)) reject();
+  if (typeof request.url !== 'string' || !request.url.startsWith('/') || /[#%\\]/.test(request.url)) reject();
+  if (request.url.split('?')[0] === '/internal/source-queue') {
+    if (request.url.length > 2048) reject();
+    sourceQuery(request.url);
+  } else if (request.url.length > 512 || request.url.includes('?')) reject();
+}
+/** Raw ASCII query parsing prevents alternate key spellings, decoding ambiguity and credential URLs. */
+function sourceQuery(path: string): SourceQueueQuery | undefined {
+  const [pathname, raw, ...extra] = path.split('?');
+  if (pathname !== '/internal/source-queue' || extra.length) reject();
+  if (raw === undefined) return undefined;
+  if (!raw || raw.length > 1536) reject();
+  const query: SourceQueueQuery = {};
+  const seen = new Set<string>();
+  for (const part of raw.split('&')) {
+    const [name, value, ...rest] = part.split('=');
+    if (!value || rest.length || seen.has(name)) reject();
+    seen.add(name);
+    if (name === 'view' && (sourceQueueViews as readonly string[]).includes(value)) query.view = value as SourceQueueQuery['view'];
+    else if (name === 'limit' && /^[1-9][0-9]?$/.test(value) && Number(value) <= 50) query.limit = Number(value);
+    else if (name === 'cursor' && /^[A-Za-z0-9_-]{1,1024}$/.test(value)) query.cursor = value;
+    else reject();
+  }
+  return query;
 }
 function credential(request: IncomingMessage): string {
   const header = request.headers.authorization;
@@ -87,15 +114,23 @@ async function jsonBody(request: IncomingMessage): Promise<unknown> {
     return JSON.parse(text, (key, value: unknown) => { if (['__proto__', 'prototype', 'constructor'].includes(key)) reject(); return value; });
   } catch { return reject(); }
 }
-function send(response: ServerResponse, status: number, value: unknown, requestId: string): void {
+function sendSerialized(response: ServerResponse, status: number, serialized: string, requestId: string, head = false): void {
   if (response.destroyed || response.writableEnded) return;
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store, max-age=0',
     'Pragma': 'no-cache', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
     'Referrer-Policy': 'no-referrer', 'X-Request-ID': requestId, 'Connection': 'close' });
-  response.end(JSON.stringify(value));
+  response.end(head ? undefined : serialized);
+}
+function send(response: ServerResponse, status: number, value: unknown, requestId: string, head = false): void {
+  sendSerialized(response, status, JSON.stringify(value), requestId, head);
 }
 function failure(error: unknown): { status: number; code: string } {
   if (error instanceof RequestError) return { status: error.status, code: error.code };
+  if (error instanceof SourceQueueError) {
+    if (error.code === 'INVALID_QUERY') return { status: 400, code: 'INVALID_REQUEST' };
+    if (error.code === 'STALE_CURSOR') return { status: 409, code: 'CONFLICT' };
+    return { status: 503, code: 'UNAVAILABLE' };
+  }
   if (error instanceof SecurityError) {
     if (error.code === 'PERMISSION_DENIED') return { status: 403, code: 'FORBIDDEN' };
     if (error.code === 'STALE_TARGET') return { status: 409, code: 'CONFLICT' };
@@ -147,8 +182,11 @@ export async function startInternalEditorialHTTP(options: InternalEditorialHTTPO
   const pruneRevocations = () => { const now = Date.parse(access.now()); for (const [id, expires] of revocations) if (Date.parse(expires) <= now) revocations.delete(id); };
   const fence = (principal: Principal) => { if (closing) throw new SecurityError('STORAGE_UNAVAILABLE'); pruneRevocations(); if (revocations.has(principal.sessionId)) throw new SecurityError('SESSION_REVOKED'); };
   const scopedPolicy: ResourcePolicy = { authorize: (principal, permission, targets, state) => {
-    fence(principal); assertResourcePolicy(policy, principal, permission, targets, state);
-  } };
+    fence(principal);
+    // The source facade validates decisions against its frozen shared snapshot.
+    if (permission === 'SOURCE_READ') return policy.authorize(principal, permission, targets, state);
+    assertResourcePolicy(policy, principal, permission, targets, state);
+  }, ...(typeof policy.sourceReadRevision === 'function' ? { sourceReadRevision: () => policy.sourceReadRevision!() } : {}) };
   let port = 0;
   const sockets = new Set<Socket>();
   const server = createServer({ maxHeaderSize: 12_288, requestTimeout: 5000, headersTimeout: 5000, connectionsCheckingInterval: 1000 }, (request, response) => {
@@ -156,6 +194,20 @@ export async function startInternalEditorialHTTP(options: InternalEditorialHTTPO
     const task = (async () => {
       validateInternalRequest(request, port);
       const path = request.url!;
+      if (path.split('?')[0] === '/internal/source-queue') {
+        if (request.method !== 'GET' && request.method !== 'HEAD') reject(405, 'METHOD_NOT_ALLOWED');
+        if (request.headers['content-length'] !== undefined && request.headers['content-length'] !== '0') reject();
+        const token = credential(request);
+        const sourceQueue = new AuthenticatedSourceQueue(repository, access, { resourcePolicy: scopedPolicy });
+        await sourceQueue.withPage(token, sourceQuery(path), (page, assertCurrent) => {
+          const serialized = JSON.stringify(page);
+          if (Buffer.byteLength(serialized) > sourceResponseLimit) throw new SecurityError('STORAGE_UNAVAILABLE');
+          // Serialization can invoke userland hooks. Recheck immediately before synchronous disclosure.
+          assertCurrent();
+          sendSerialized(response, 200, serialized, requestId, request.method === 'HEAD');
+        });
+        return;
+      }
       const story = /^\/internal\/stories\/([A-Za-z0-9][A-Za-z0-9_-]{0,127})\/(edit|review|approve)$/.exec(path);
       const edition = /^\/internal\/editions\/([A-Za-z0-9][A-Za-z0-9_-]{0,127})\/review$/.exec(path);
       const schedule = /^\/internal\/schedules\/([A-Za-z0-9][A-Za-z0-9_-]{0,127})\/pause$/.exec(path);
@@ -238,7 +290,7 @@ export async function startInternalEditorialHTTP(options: InternalEditorialHTTPO
       send(response, 200, mutation(result), requestId);
     })().catch(error => {
       const safe = failure(error);
-      send(response, safe.status, { error: safe.code, requestId }, requestId);
+      send(response, safe.status, { error: safe.code, requestId }, requestId, request.method === 'HEAD');
       // Neither errors nor request headers/body/credentials are logged or reflected.
     });
     pending.add(task); void task.finally(() => pending.delete(task));

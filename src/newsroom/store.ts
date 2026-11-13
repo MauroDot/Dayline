@@ -214,7 +214,7 @@ function securityEvent(row: RecordValue): boolean {
 function authenticatedAction(row: RecordValue): boolean {
   return securityKeys(row, ['id', 'actorId', 'identityRevision', 'sessionRef', 'permission', 'resourceKind', 'resourceId', 'resourceVersion', 'at'])
     && ['id', 'actorId', 'sessionRef'].every(key => securityOpaque(row[key])) && positiveInteger(row.identityRevision) && permission(row.permission)
-    && ['STORY', 'DRAFT', 'EDITION', 'SCHEDULE', 'RUN', 'IDENTITY', 'SESSION'].includes(row.resourceKind as string) && text(row.resourceId, 256)
+    && ['STORY', 'DRAFT', 'EDITION', 'SCHEDULE', 'RUN', 'IDENTITY', 'SESSION', 'SOURCE'].includes(row.resourceKind as string) && text(row.resourceId, 256)
     && (row.resourceVersion === null || positiveInteger(row.resourceVersion)) && utcTimestamp(row.at);
 }
 function securityRows(value: unknown, maximum: number, valid: (row: RecordValue) => boolean): value is RecordValue[] {
@@ -291,6 +291,23 @@ export class JsonRepository {
       throw error;
     }
   }
+  /** Fresh read and synchronous disclosure share the same lock as repository mutations. No records are written. */
+  async readGuarded<T>(read: (state: State) => T): Promise<T> {
+    if (typeof read !== 'function' || read.constructor.name === 'AsyncFunction') throw Error('Repository read guard must be synchronous');
+    await mkdir(dirname(this.file), { recursive: true });
+    const lock = await this.acquireLock();
+    try {
+      const result = read(await this.read());
+      if (result !== null && (typeof result === 'object' || typeof result === 'function') && typeof (result as { then?: unknown }).then === 'function') {
+        void Promise.resolve(result).catch(() => undefined);
+        throw Error('Repository read guard must be synchronous');
+      }
+      return structuredClone(result);
+    } finally {
+      try { await rm(lock, { recursive: true, force: true }); }
+      catch { process.emitWarning('Repository cleanup failed; inspect local lock and temporary files', { code: 'DAYLINE_REPOSITORY_CLEANUP' }); }
+    }
+  }
   async transact<T>(change: (state: State) => T): Promise<T> {
     return this.transactInternal(change);
   }
@@ -299,8 +316,7 @@ export class JsonRepository {
     if (typeof guard !== 'function') throw Error('Repository commit guard is required');
     return this.transactInternal(change, guard);
   }
-  private async transactInternal<T>(change: (state: State) => T, guard?: (state: State) => void): Promise<T> {
-    await mkdir(dirname(this.file), { recursive: true });
+  private async acquireLock(): Promise<string> {
     const lock = this.file + '.lock';
     let locked = false;
     for (let i = 0; i < 200; i++) {
@@ -308,6 +324,11 @@ export class JsonRepository {
       catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; await new Promise(resolve => setTimeout(resolve, 10)); }
     }
     if (!locked) throw Error('Repository is locked; inspect before recovery');
+    return lock;
+  }
+  private async transactInternal<T>(change: (state: State) => T, guard?: (state: State) => void): Promise<T> {
+    await mkdir(dirname(this.file), { recursive: true });
+    const lock = await this.acquireLock();
     const temp = join(dirname(this.file), `.${basename(this.file)}.${randomUUID()}.tmp`);
     try {
       const state = await this.read();
