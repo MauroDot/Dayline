@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 import { seedSourceQueueFixture, sourceQueueFixtureAt } from '../fixtures/source-queue-fiction.ts';
 import { JsonRepository } from '../src/newsroom/store.ts';
@@ -119,13 +119,16 @@ test('isolated fixture CLI is deterministic, explicitly fictional, makes no fetc
   const directory = await mkdtemp(join(tmpdir(), 'dayline-source-queue-runner-test-'));
   try {
     const runtime = join(directory, 'runtime'); await mkdir(runtime);
-    const guard = join(directory, 'forbid-network.mjs');
+    // Exercise real preload resolution with URL delimiters, spaces and Unicode in the filename.
+    const guard = join(directory, 'forbid network #100% café.mjs');
     const probe = join(directory, 'network-called');
-    await writeFile(guard, "import {writeFileSync} from 'node:fs'; globalThis.fetch = () => { writeFileSync(process.env.DAYLINE_FIXTURE_NETWORK_PROBE, 'called'); throw Error('No fixture network'); };\n");
+    await writeFile(guard, "import {writeFileSync} from 'node:fs'; writeFileSync(process.env.DAYLINE_FIXTURE_PRELOAD_PROBE, 'loaded'); globalThis.fetch = () => { writeFileSync(process.env.DAYLINE_FIXTURE_NETWORK_PROBE, 'called'); throw Error('No fixture network'); };\n");
     const results: unknown[] = [];
     for (let attempt = 0; attempt < 2; attempt++) {
-      const { stdout } = await run(process.execPath, ['--experimental-strip-types', '--import', guard, runner], {
-        env: { ...process.env, TMPDIR: runtime, DAYLINE_FIXTURE_NETWORK_PROBE: probe }, maxBuffer: 1024 * 1024,
+      const loaded = join(directory, `preload-loaded-${attempt}`);
+      const { stdout } = await run(process.execPath, ['--experimental-strip-types', '--import', pathToFileURL(guard).href, runner], {
+        env: { ...process.env, TMPDIR: runtime, TEMP: runtime, TMP: runtime,
+          DAYLINE_FIXTURE_NETWORK_PROBE: probe, DAYLINE_FIXTURE_PRELOAD_PROBE: loaded }, maxBuffer: 1024 * 1024,
       });
       const output = JSON.parse(stdout) as { fictional: boolean; developmentOnly: boolean; asOf: string; duplicateDiscoveries: number; page: SourceQueuePage };
       assert.deepEqual(Object.keys(output).sort(), ['asOf', 'developmentOnly', 'duplicateDiscoveries', 'fictional', 'page']);
@@ -134,6 +137,7 @@ test('isolated fixture CLI is deterministic, explicitly fictional, makes no fetc
       assert.equal(output.page.entries.length, 7);
       assert.ok(output.page.entries.every(entry => entry.canAdvance === false));
       assert.doesNotMatch(stdout, /actorAssertion|evidenceReferences|providerMetadata|fictional-source-reviewer|fictional\.json|fictional-metadata-v1|fictional test fixture only/);
+      assert.equal(await readFile(loaded, 'utf8'), 'loaded');
       assert.deepEqual(await readdir(runtime), []);
       await assert.rejects(readFile(probe), { code: 'ENOENT' });
       results.push(output);
@@ -149,7 +153,7 @@ test('fixture CLI rejects paths, live modes and every other command-line argumen
     const callerFile = join(directory, 'caller-repository.json');
     for (const args of [['--repository', callerFile], ['--live'], ['--write-fixture'], ['--help'], ['']]) {
       await assert.rejects(run(process.execPath, ['--experimental-strip-types', runner, ...args], {
-        env: { ...process.env, TMPDIR: runtime }, maxBuffer: 1024 * 1024,
+        env: { ...process.env, TMPDIR: runtime, TEMP: runtime, TMP: runtime }, maxBuffer: 1024 * 1024,
       }), error => {
         const failure = error as Error & { code: number; stdout: string; stderr: string };
         assert.equal(failure.code, 1); assert.equal(failure.stdout, '');
