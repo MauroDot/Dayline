@@ -119,6 +119,18 @@
 - [ ] Exercise Stripe test mode (Checkout, webhooks, cancellation, billing failure) without live customers.
 - [ ] Check $2.99/month economics including Stripe Billing, tax, hosting, audio, storage, abuse and refunds.
 
+## DL-006A — Public-reader deployment foundation
+
+- [x] Separate pure read-only public runtime from the development wrapper and privileged internal services.
+- [x] Explicit typed environment/listener configuration, official-data identification and bounded upstream/HTTP behavior.
+- [x] Deterministic allowlisted public artifact with commit/hash provenance and inventory/import inspection.
+- [x] Health versus observed-data readiness, sanitized operational events and graceful shutdown.
+- [x] Hosting-neutral staging, restart, rollback and previous-version recovery runbook with a manual external-release gate.
+- [x] Node 22.16.0 local validation: TypeScript, 602/602 backend/domain/security tests, 18/18 Chromium regressions, byte-identical public builds, inspection and non-root/read-only startup/shutdown smoke passed; see [DL-006A validation](DL-006A_VALIDATION.md).
+- [ ] Select/review hosting, TLS/reverse-proxy, non-root service policy, capacity and external operational controls.
+- [ ] Complete Windows physical, native zoom, assistive-technology and compliant live Treasury/NWS acceptance before release.
+- [ ] Obtain explicit authorization before any external artifact transfer, deployment, DNS/firewall change or public launch.
+
 ## DL-006 — Launch readiness
 - [ ] Editorial policy, rights review, accessibility, privacy and security checks.
 - [ ] Operational rollback, budget thresholds, billing incident response.
