@@ -24,7 +24,8 @@ npm start
 
 Open http://localhost:3000. Public page and server routes:
 - `GET /` — foundation UI
-- `GET /api/health` — readiness probe
+- `GET /api/health` — process health (independent of official-source availability)
+- `GET /api/ready` — observed official-data readiness; returns 503 until fresh required samples exist
 - `GET /api/debt` — last available Treasury Debt to the Penny report
 - `GET /api/weather?city=Tulsa` — NWS point forecast for an allowlisted city
 
@@ -71,7 +72,7 @@ Foundation 001 development acceptance and merge are historical facts confirmed b
 - [ ] Compare changed views against the authorized prototype where available and record new milestone acceptance.
 - [ ] Confirm rights, corrections, editorial approval, security, and operational controls before any public deployment.
 
-Production use still requires separately accepted rights, security, operational and accessibility checks. Future paid services require separately approved cost limits, quotas and alerts; no paid API is enabled here. Never publish unreviewed generated news or commit credentials. To recover locally, stop the server, check `git status`, preserve uncommitted work, and start from a separately reviewed known-good commit in a new checkout or worktree. Do not reset a checkout containing unreviewed work. Public rollback and deployment procedures remain to be designed and approved.
+Production use still requires separately accepted rights, security, operational and accessibility checks. Future paid services require separately approved cost limits, quotas and alerts; no paid API is enabled here. Never publish unreviewed generated news or commit credentials. To recover locally, stop the server, check `git status`, preserve uncommitted work, and start from a separately reviewed known-good commit in a new checkout or worktree. Do not reset a checkout containing unreviewed work. The hosting-neutral staging and rollback procedure is prepared in [the deployment runbook](docs/DEPLOYMENT_RUNBOOK.md); executing an external release still requires separate manual authorization.
 
 ## Internal newsroom prototype
 
@@ -157,3 +158,14 @@ DL-005B adds a dedicated loopback listener for synthetic editorial tests. It is 
 The private test client uses an Authorization bearer header; there are no login, token-minting, role-management or publishing endpoints. Each mutation passes through the authenticated facade with current roles, explicit resource assignments, expected revisions and a final commit guard. An administrator receives no automatic editorial approval permission. Existing direct fixture services remain trusted internal development code, not production authorization.
 
 Use the deterministic security/HTTP tests through `npm run check`; they create and dispose temporary repositories/listeners and keep invented credentials in memory. Never paste a credential into a URL or print it for manual testing. See [security design](docs/SECURITY_DESIGN.md) for the trust diagram, endpoint policy, legacy bypass inventory and Windows acceptance instructions, and [DL-005B validation](docs/DL-005B_VALIDATION.md) for actual executed checks and remaining production requirements.
+
+
+## Isolated public-reader release artifact
+
+DL-006A prepares a hosting-neutral read-only runtime without activating external hosting. `npm run build:public` creates `dist/public-reader`; `npm run inspect:public` checks its inventory, hashes and import boundary. The artifact uses Node.js **22.16.0**, contains no runtime npm dependencies, and starts with `node --experimental-strip-types src/public/main.ts` from its own directory. Its manifest records source commit/tree, actual file hashes and whether the source checkout was dirty. A release candidate must be rebuilt from the clean reviewed commit and inspected before transfer. The builder refuses to overwrite an existing output directory.
+
+The public entry point is separate from the development `server.ts` wrapper. Its package contains only public-reader modules, official-data/cache adapters, the four existing reader assets, minimal package metadata and the provenance manifest. It excludes the newsroom, editorial/security/scheduler services, development fixtures, development edition assets, tests, `.git`, local databases, environment files and development dependencies. There are no login, internal administration, editorial mutation or publishing routes. Existing fictional demonstration stories stay labeled; market and audio placeholders do not fabricate data.
+
+Public startup validates development/staging/production configuration. The default bind is loopback; a platform listener must be selected explicitly. Staging/production require compliant NWS identification and reject development/synthetic activation flags. `/api/health` reports process health, while `/api/ready` uses only observed fresh Treasury/NWS outcomes and readable assets, performs no upstream probes and returns 503 for unknown, failed or stale required observations. A healthy process does not imply working upstream sources. Restarting clears the in-memory observations/cache and starts readiness at 503 again.
+
+See [the deployment runbook](docs/DEPLOYMENT_RUNBOOK.md) for the configuration matrix, safe local/Windows checks, reverse-proxy and unprivileged-account requirements, staging authorization gate, rollback and recovery. [DL-006A validation](docs/DL-006A_VALIDATION.md) records actual local tests and artifact evidence. No image publication, public deployment, DNS/firewall change, identity-provider activation, news publishing, paid API or payment service is authorized by this milestone.
