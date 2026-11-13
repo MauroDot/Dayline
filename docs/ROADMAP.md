@@ -99,6 +99,17 @@
 - [x] DL-005A local validation on Node 22.16.0: TypeScript, 459/459 backend/domain/security tests and 18/18 Chromium regressions passed; see [validation report](DL-005A_VALIDATION.md).
 - [ ] Review real identity trust, production authorization/storage and operations before any live accounts or public administration.
 
+## DL-005B — Isolated authenticated editorial HTTP integration
+
+- [x] Dedicated development-only loopback listener with explicit opt-in, strict request origins/headers and header-based synthetic credentials.
+- [x] Trusted synthetic verifier selection with a disabled production-provider boundary; no real identities or public credential minting.
+- [x] Selected authenticated story/edition/scheduler entry points with explicit resource assignments and current revision checks.
+- [x] Current-session/role/resource checks at mutation and commit boundaries; historical unauthenticated assertions preserved.
+- [x] Legacy mutation-path inventory and production bypass limitations documented in [security design](SECURITY_DESIGN.md).
+- [x] Local validation on Node 22.16.0: TypeScript, 530/530 backend/domain/security tests, 71/71 targeted security/HTTP tests and 18/18 Chromium regressions passed; startup/shutdown and route isolation passed. See [DL-005B validation](DL-005B_VALIDATION.md).
+- [ ] Complete separate physical Windows, native browser zoom and assistive-technology acceptance.
+- [ ] Review real identity trust, secure bootstrap/key management, exclusive production authorization, durable storage and independent security assessment before activation.
+
 ## Future voice and premium feasibility
 - [ ] Verify current OpenAI speech endpoints, voices, model lifecycles and rates.
 - [ ] Measure actual cost of short and long scripts with realistic pronunciation and retries.
