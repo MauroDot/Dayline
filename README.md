@@ -188,3 +188,25 @@ Render Free sleep and cold starts can cause an initial delay; a sleeping instanc
 Local operational tests cover restart, outage/recovery, cache sharing, admission, timeout/shutdown and sanitization without live government requests. The public process adds bounded fixed-schema log emission, retaining safe lifecycle evidence while limiting repeated failure/capacity records. This is best-effort process-local visibility, not a complete audit log or an external monitoring service. The twelve-file artifact/import boundary remains the release contract.
 
 Before any separately authorized staging release, verify the exact clean source commit and candidate manifest/content digest, use Node.js 22.16.0, retain the previous known-good deployment identity, and confirm automatic deployment remains disabled in the owner's read-only provider view. An offline release-check result verifies only local inputs; it never grants deployment authority or verifies Render settings. See [the hosted staging runbook](docs/DEPLOYMENT_RUNBOOK.md#existing-render-staging-owner-reported) and [DL-006B-R2 validation](docs/DL-006B-R2_VALIDATION.md). Actual R2 Windows/physical and separately authorized live-source acceptance remain distinct from Linux fixtures and prior owner-accepted versions.
+
+## Fictional editorial source queue
+
+DL-007A adds a read-only projection of the existing newsroom repository for prospective sources. It does not create another source database or change schema 7. Recent, unresolved, related, eligible, blocked and withdrawn views distinguish provenance, rights and retention concerns. Each entry explicitly reports quarantine status; redacted records report that status as withheld. Eligibility means managed metadata only; it grants no analysis, AI or redistribution permission. An eligible metadata record still requires the existing editorial workflow; every queue entry reports `canAdvance: false` and the queue offers no approval or publication operation. Discovery, a provider response, a headline and several syndicated links do not establish truth, rights or independent corroboration.
+
+Inspect invented candidates without network access:
+
+```bash
+npm run source-queue:fixture
+```
+
+The command creates and removes its own temporary fictional repository. It accepts no existing repository path or live-provider mode. Its JSON is explicitly fictional and uses a fixed historical evaluation time within the existing fixture rights. Duplicate-attempt counts come from actual fixture ingestion outcomes; anonymous historical duplicate audits are not reconstructed into source relationships.
+
+For the responsive local inspection page at http://localhost:3000/dev/source-queue, start the existing development server with both exact settings:
+
+```bash
+NODE_ENV=development DAYLINE_DEV_SOURCE_QUEUE=fictional npm start
+```
+
+In PowerShell, set `$env:NODE_ENV = 'development'` and `$env:DAYLINE_DEV_SOURCE_QUEUE = 'fictional'`, then run `npm.cmd start`. The route and its assets/data are fenced by local peer, Host and Origin checks and use only a separate disposable fictional repository. The page accepts bounded view/pagination choices, never a user repository path or arbitrary source ID. Historical fixture evaluation is labeled; it cannot make a current source eligible. Browser payload expires after at most 15 seconds of wall-clock display, is cleared on expiry or failure and uses no persistent browser storage.
+
+The current authenticated resource model has no source resource or source-read permission. DL-007A preserves that model and exposes no existing newsroom repository through HTTP. Queue metadata is freshly checked against captured rights, provenance, deletion and retention rules; expired, revoked, superseded, malformed or deleted metadata is withheld. Titles, article bodies, raw provider data, private notes and audit identities are excluded. The twelve-file LF public-reader artifact excludes all queue code, fixtures, interface assets and tests. No real news provider, paid service, Render change or public publishing is enabled. See [architecture](docs/ARCHITECTURE.md#dl-007a-read-only-editorial-source-queue), [security boundaries](docs/SECURITY_DESIGN.md#dl-007a-source-queue-boundary), [future provider prerequisites](docs/NEWS_PROVIDER_EVALUATION.md#future-source-queue-integration-and-licensing-decision) and [DL-007A validation](docs/DL-007A_VALIDATION.md) for contracts, actual checks and remaining blockers.

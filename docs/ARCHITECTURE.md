@@ -157,3 +157,56 @@ A cold process, a restarted process and a sleeping host are distinct operational
 Structured operational emission is bounded within the existing public entry module, without adding a runtime file or telemetry client. The logger accepts only whitelisted event fields, caps repeated failure/capacity records per window and preserves a bounded set of critical lifecycle categories. Saturating suppression counts summarize lost routine records when capacity is available; sink failure/backpressure does not create an unbounded queue or alter an HTTP/data outcome. Logs remain volatile, best-effort and mutable by the host, not tamper-proof or complete audit storage. Correlation IDs identify local requests without carrying raw paths, query strings, credentials or NWS contact configuration.
 
 Release checking is offline build/operator tooling, outside the twelve-file runtime artifact. It compares inspected clean artifact provenance and content hashes with explicit expected values, validates a staging HTTPS origin and requires an operator-supplied previous-version record and disabled-auto-deploy declaration. It makes no Render/GitHub request, proves no hosted acceptance, grants no deployment permission and cannot authorize rollback. A future operator must separately verify current provider state, retain known-good evidence, obtain the exact release authorization and trigger a manual deployment. See [the runbook](DEPLOYMENT_RUNBOOK.md) and [R2 validation](DL-006B-R2_VALIDATION.md).
+
+## DL-007A read-only editorial source queue
+
+The source queue projects the existing schema-7 `managedSources`, `quarantine`, `sources`, `provenanceDecisions` and `deletions` collections together with the repository retention-review flag. It creates neither a persistent queue collection nor a parallel source database. Reading does not approve, resolve provenance, ingest, refresh retrieval times, extend retention or write a repository revision. Existing ingestion, policy, eligibility, provenance and retention contracts remain authoritative.
+
+`SourceQueue(repository, { clock? }).read({ view?, limit?, cursor? })` returns `{ entries, nextCursor, view, limit, retentionReviewRequired }`. The default page size is 20 and the maximum is 50. The injected clock is a trusted test/fixture seam; HTTP callers cannot supply it. No query accepts a source ID or arbitrary repository field.
+
+```mermaid
+flowchart LR
+  A[Existing managed metadata and quarantine] --> C[Fresh repository snapshot]
+  B[Sources, provenance, deletion markers and retention hold] --> C
+  P[Exact captured policy and current registry status] --> D[Validate and project allowlisted metadata]
+  C --> D
+  D --> E[Bounded deterministic queue views]
+  E --> F[Fictional CLI / isolated development page]
+```
+
+Each projection uses one fresh atomic repository read and validates the requested evaluation time, record structure, canonical URL, timestamps, captured policy snapshot, current policy status and original retention deadline. A later policy cannot upgrade a record's snapshot or reset its clock. Missing rights, expiry, revocation, supersession, deletion, malformed records and retention concerns are represented with fixed safe statuses/reasons; unsafe identifying metadata is withheld. Retention holds remain blocking even when no deletion marker survives. Reads do not perform retention cleanup or clear that hold.
+
+The display contract includes an opaque candidate reference and, only where valid retention permits, publisher, canonical link, source publication and original retrieval/discovery timestamps, provenance classification, explicit quarantine status, rights/retention status and verified relationship references. It excludes source record IDs, actor/audit identities, private notes, rights-policy payloads, titles, retained licensed bodies, raw provider responses and credentials. Opaque references are display correlation values, not credentials or authority to fetch another resource. Blocked reasons are fixed codes/messages rather than repository text or exception strings. `sourceEligible` preserves the existing `eligibleSource` contract's managed-metadata meaning; it grants no analysis, AI, redistribution, approval or publication capability. Every entry has `canAdvance: false`; metadata eligibility does not verify evidence or approve a source for editorial use.
+
+| Contract field | Meaning |
+| --- | --- |
+| `provenanceStatus` | `RESOLVED`, `UNRESOLVED` or `DISPUTED`; recorded classification is not source verification. |
+| `quarantineStatus` | `QUARANTINED`, `NOT_QUARANTINED` or `WITHHELD`; validated active records report actual collection membership, while redacted/inactive/deleted/malformed records withhold it. It is not inferred from provenance. |
+| `rightsStatus` | `ACTIVE`, `MISSING`, `EXPIRED`, `REVOKED`, `SUPERSEDED` or `UNKNOWN`; active metadata rights do not imply every downstream use. |
+| `retentionStatus` | `RETAINED`, `EXPIRED`, `DELETED` or `REVIEW_REQUIRED`; the repository hold can block otherwise retained metadata. |
+| `sourceEligible` | Current managed-metadata eligibility after provenance, rights and hold checks; no downstream use permission. |
+| `blockedReason` | Fixed safe reason for editorial attention; no provider/repository exception text. |
+| `relationship` | Verified `SYNDICATED` relation to an opaque original reference, or `null`; no inferred duplicate links. |
+
+A repository-wide retention hold may preserve a validated record's known quarantine status while preventing source eligibility. Eligibility requires `NOT_QUARANTINED`; neither quarantine membership nor its absence establishes editorial approval.
+
+The deterministic views are:
+
+| View | Editorial meaning |
+| --- | --- |
+| `RECENT` | All candidates in stable recent order, with unsafe metadata redacted. |
+| `UNRESOLVED` | Provenance requires review; quarantine is not eligible evidence. |
+| `RELATED` | Verified syndication/origin relationships requiring contextual inspection. |
+| `ELIGIBLE` | Managed metadata passes current source eligibility; no workflow authority is granted. |
+| `BLOCKED` | Rights, provenance, retention or record validity prevents use. |
+| `WITHDRAWN` | Expired, deleted or otherwise withdrawn records, with identity withheld as required. |
+
+Pagination is bounded to 1–50 entries with stable sorting and a snapshot fingerprint. A base64url continuation cursor is bounded to 1,024 characters and scoped to the safe projection; relevant state or eligibility expiry invalidates stale continuation with `STALE_CURSOR`. Filters and pagination select from the safe projection and cannot request arbitrary JSON or private fields. Verified syndication links share original-report identity; multiple copies never increase an independent-report count. Rejected and duplicate ingestion audits intentionally have no source identity. The queue cannot recover source-linked duplicate history from those events; the fixture reports only the duplicate counts produced by its own actual ingestion run.
+
+### Isolated fictional inspection
+
+`npm run source-queue:fixture` composes the existing ingestion/provenance services and invented `.test` metadata in a temporary repository, reads the projection, prints labeled JSON and disposes the repository. It accepts zero arguments and performs no provider/model requests. The examples cover new unknown and disputed candidates, an eligible original, a verified syndicated copy, retention expiry, a revoked grant and a legacy missing-rights record. Output is allowlisted as `{ fictional: true, developmentOnly: true, asOf, duplicateDiscoveries, page }`; the seed's one duplicate is an actual ingestion result. Historical fixture time is fixed at `2026-06-01T12:00:00.000Z` within existing fictional policy grants; no real-provider policy or broader rights grant is added. The fixture creates no stories or approvals.
+
+The existing development wrapper serves `/dev/source-queue` only with `NODE_ENV=development` and `DAYLINE_DEV_SOURCE_QUEUE=fictional`, local peer/Host/Origin validation and the same gates on its assets/data. Styles/script live at `/dev/source-queue/source-queue.css` and `/dev/source-queue/source-queue.js`; JSON is `/dev/source-queue/preview?view=RECENT&limit=6` with an optional bounded cursor. The page offers the six named views, page sizes 3/6/12, refresh, next page and return to first page. It uses its own isolated fictional repository, with no user repository or source-ID selection. The fictional historical evaluation label is distinct from the wall-clock response lease: the browser clears display after at most 15 seconds, on unavailable responses and on page lifecycle exit, and stores no payload persistently. Responsive cards/table, labeled status/filter controls, keyboard access and visible focus support local inspection. There is no mutation control or automatic approval.
+
+The DL-005A/B model has no source resource kind or source-read permission. This milestone does not add one or reuse another permission to expose sources. The generic projection remains trusted internal code; only the isolated fixture is reachable through the development page. Production source inspection requires separately reviewed source/object/tenant authorization, current-session and revocation checks, secure identity, durable storage, retention enforcement and licensing. All queue modules, fixtures, tests, scripts and interface assets remain outside the unchanged twelve-file LF public artifact; the public runtime imports no queue service. See [security design](SECURITY_DESIGN.md#dl-007a-source-queue-boundary), [provider prerequisites](NEWS_PROVIDER_EVALUATION.md#future-source-queue-integration-and-licensing-decision) and [DL-007A validation](DL-007A_VALIDATION.md).

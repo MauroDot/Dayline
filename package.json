@@ -9,9 +9,10 @@
   "scripts": {
     "start": "node --experimental-strip-types server.ts",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "check": "npm run typecheck && node --check public/app.js && node --check public/stories.js && node --check public/edition.js && npm test",
+    "check": "npm run typecheck && node --check public/app.js && node --check public/stories.js && node --check public/edition.js && node --check public/source-queue.js && npm test",
     "typecheck": "tsc --noEmit",
     "ingest:fixture": "node --experimental-strip-types src/ingestion/runner.ts",
+    "source-queue:fixture": "node --experimental-strip-types src/source-queue/runner.ts",
     "retention:fixture": "node --experimental-strip-types src/ingestion/cleanup-runner.ts",
     "edition:fixture": "node --experimental-strip-types src/editions/runner.ts",
     "schedule:fixture": "node --experimental-strip-types src/scheduling/runner.ts",
