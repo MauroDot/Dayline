@@ -1,0 +1,14 @@
+# Public artifact text inputs must have identical checkout bytes on every platform.
+# Keep these explicit paths aligned with scripts/inspect-public.ts; no binary rules.
+/.gitattributes text eol=lf
+/package.json text eol=lf
+/src/cache.ts text eol=lf
+/src/official-data.ts text eol=lf
+/src/public/config.ts text eol=lf
+/src/public/lifecycle.ts text eol=lf
+/src/public/main.ts text eol=lf
+/src/public/reader.ts text eol=lf
+/public/index.html text eol=lf
+/public/style.css text eol=lf
+/public/app.js text eol=lf
+/public/stories.js text eol=lf

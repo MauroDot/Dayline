@@ -56,6 +56,8 @@ There are no runtime npm dependencies. `.git`, environment files, credentials, l
 
 A development build may truthfully record `sourceDirty: true` while implementation is uncommitted. Do not release such a build. After the reviewed local commit is created, build again into a new directory, verify `sourceDirty: false`, confirm the manifest commit equals the reviewed release SHA, and inspect every file. File hashes identify the actual package bytes even when comparing development builds. Build twice from the same unchanged source state to verify deterministic output; changing the commit or dirty state intentionally changes provenance metadata.
 
+W2 controls checkout bytes through explicit `.gitattributes` `text eol=lf` entries for the nine required public source/assets, lifecycle support, source `package.json` and `.gitattributes` itself. No broad text/binary rule or global Git setting is added. A fresh checkout must retain LF for those paths even when `core.autocrlf=true`. The builder and inspector reject carriage returns rather than normalize input or conceal changed bytes. The policy file stays outside the twelve-file artifact. Preserve an existing CRLF/dirty checkout for review; do not reset, renormalize, rewrite files or change the owner's `core.autocrlf` to obtain a matching digest.
+
 ## Configuration matrix
 
 Configuration is read from the process environment; `.env.example` is documentation and is not loaded automatically. Unknown `NODE_ENV`, malformed numeric values and incompatible options fail startup with a safe fixed error category rather than falling back to development.
@@ -251,6 +253,34 @@ $env:PORT = '3000'
 Check homepage, safe assets and official panels; distinguish `/api/health` from `/api/ready`. Record source timestamps only for actual compliant live requests. Confirm GET/HEAD support, 404 for `/internal/principal`, `/auth`, `/api/admin`, `/src/security/http.ts` and `/dev/edition`, and 405 for an editorial-looking POST. Use the terminal's normal Ctrl+C interaction, record the observed stop/restart behavior, and confirm that restarted readiness is initially unknown. This manual console observation is separate from programmatic Windows child termination. Do not open firewall ports or activate the private editorial listener.
 
 The source checkout's opt-in fictional edition remains development-only and is absent from the artifact. Repeat and record the relevant W1 Windows physical/browser checks, including native zoom and navigation; keyboard/assistive-technology coverage not already demonstrated remains separate. Automated Chromium/axe and simulated Windows tests do not certify WCAG conformance or prove an actual Windows rerun. Foundation 001 acceptance and the owner's original DL-006A results remain historical acceptance.
+
+### W2 cross-platform artifact reacceptance
+
+The owner reported an actual R2 Windows run with Node 22.16.0, 666 passes, six capability skips and zero failures out of 672 tests, plus passing staging/production smoke. Its artifact digest differed from Linux; `core.autocrlf=true` and `i/lf w/crlf attr/` established checkout conversion as a reproducibility mechanism. Those results remain historical acceptance of R2. The [W2 validation report](DL-006B-R2-W2_VALIDATION.md) records both original digests and the new reviewed candidate; Linux temporary-repository tests alone do not establish W2 Windows acceptance.
+
+After a separately authorized handoff makes the reviewed W2 commit available, use a new isolated Windows checkout at that exact commit. Preserve every existing checkout, index and artifact. Record clean status, branch, HEAD, source tree, `git config --show-origin --get core.autocrlf` and Node version without changing system/global/local owner settings. Use the side-by-side Node 22.16.0 selection above. Verify every explicit policy path before building:
+
+```powershell
+$lfInputs = @(
+    '.gitattributes', 'package.json',
+    'src/public/config.ts', 'src/public/main.ts', 'src/public/reader.ts', 'src/public/lifecycle.ts',
+    'src/cache.ts', 'src/official-data.ts',
+    'public/index.html', 'public/style.css', 'public/app.js', 'public/stories.js'
+)
+git check-attr text eol -- $lfInputs
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify effective LF attributes.' }
+git ls-files --eol -- $lfInputs
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify checkout line endings.' }
+foreach ($lfInput in $lfInputs) {
+    if ([IO.File]::ReadAllBytes((Join-Path (Get-Location).Path $lfInput)) -contains 13) {
+        throw ('Carriage return found in policy input: ' + $lfInput)
+    }
+}
+```
+
+Record `text: set`, `eol: lf` and LF working-tree bytes for every path; stop if any differ. Do not repair the original checkout or run renormalization. Configuration-sensitive automated cases may change Git settings only inside their disposable test repositories, never in the owner's repository or global/system configuration.
+
+Run locked installation, typechecking and the full suite with the explicit Node 22.16.0 toolchain above; report actual passes/skips/failures. Build into two unused W2 artifact paths, then inspect and staging/production smoke-test each using that same executable. For both manifests record exact reviewed commit/tree, `sourceDirty: false`, twelve physical files, every runtime/package hash and content digest. The two outputs must match each other and the clean committed W2 evidence for that exact source commit. Run the offline release checker for each with those reviewed SHA/digest values and an independently retained previous-version record; passing still grants no deployment authority. A mismatch is a blocker, not permission to normalize source or replace the expected digest. Record actual Windows results, then repeat the applicable physical reader checks under their separate live-data authorization. No Render action or PR update is part of this procedure.
 
 ## Offline candidate release check
 
