@@ -8,6 +8,8 @@ import type { Story, State } from '../newsroom/model.ts';
 import type { EditionStatus, PlacementInput } from '../editions/types.ts';
 import { AuthenticatedEditorial } from './editorial.ts';
 import { AuthenticatedSourceQueue } from './source.ts';
+import { AuthenticatedSourceReview } from './source-review.ts';
+import type { SourceReviewAction, SourceReviewInput } from '../source-review/types.ts';
 import { SourceQueueError } from '../source-queue/service.ts';
 import { sourceQueueViews, type SourceQueueQuery } from '../source-queue/types.ts';
 import { AccessControl } from './service.ts';
@@ -90,6 +92,25 @@ function exact(value: unknown, keys: string[]): value is Record<string, unknown>
 }
 function revision(value: unknown): value is number { return Number.isSafeInteger(value) && (value as number) > 0; }
 function fingerprint(value: unknown): value is string { return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value); }
+const managedSourceId = (value: unknown): value is string => typeof value === 'string' && /^url-[a-f0-9]{64}$/.test(value);
+function sourceReviewBody(value: unknown, action: SourceReviewAction | 'inspect'): { sourceId: string; input?: SourceReviewInput } {
+  const common = ['sourceId', 'revision', 'reasonCode', 'evidenceReferences'];
+  if (action === 'inspect') {
+    if (!exact(value, ['sourceId']) || !managedSourceId(value.sourceId)) reject();
+    return { sourceId: value.sourceId };
+  }
+  if (!exact(value, action === 'propose' ? [...common, 'classification', 'originId'] : common)
+    || !managedSourceId(value.sourceId) || !fingerprint(value.revision)
+    || typeof value.reasonCode !== 'string' || !['INITIAL_REVIEW', 'EVIDENCE_SUPPORTED', 'INSUFFICIENT_EVIDENCE',
+      'CONTRADICTORY_EVIDENCE', 'REVIEW_HOLD', 'HOLD_RELEASED', 'WITHDRAWN'].includes(value.reasonCode)
+    || !Array.isArray(value.evidenceReferences) || value.evidenceReferences.length < 1 || value.evidenceReferences.length > 16
+    || value.evidenceReferences.some(id => !managedSourceId(id)) || new Set(value.evidenceReferences).size !== value.evidenceReferences.length) reject();
+  if (action === 'propose' && (typeof value.classification !== 'string'
+    || !['PRIMARY', 'ORIGINAL', 'SECONDARY', 'SYNDICATED', 'UNKNOWN', 'DISPUTED'].includes(value.classification)
+    || (value.classification === 'SYNDICATED' ? !managedSourceId(value.originId) : value.originId !== null))) reject();
+  const { sourceId, ...input } = value;
+  return { sourceId, input: input as unknown as SourceReviewInput };
+}
 async function jsonBody(request: IncomingMessage): Promise<unknown> {
   if (request.headers['content-type'] !== 'application/json') reject(415, 'UNSUPPORTED_MEDIA_TYPE');
   const length = request.headers['content-length'];
@@ -184,7 +205,7 @@ export async function startInternalEditorialHTTP(options: InternalEditorialHTTPO
   const scopedPolicy: ResourcePolicy = { authorize: (principal, permission, targets, state) => {
     fence(principal);
     // The source facade validates decisions against its frozen shared snapshot.
-    if (permission === 'SOURCE_READ') return policy.authorize(principal, permission, targets, state);
+    if (['SOURCE_READ', 'SOURCE_REVIEW', 'SOURCE_RESOLVE', 'SOURCE_HOLD', 'SOURCE_RELEASE'].includes(permission)) return policy.authorize(principal, permission, targets, state);
     assertResourcePolicy(policy, principal, permission, targets, state);
   }, ...(typeof policy.sourceReadRevision === 'function' ? { sourceReadRevision: () => policy.sourceReadRevision!() } : {}) };
   let port = 0;
@@ -194,6 +215,24 @@ export async function startInternalEditorialHTTP(options: InternalEditorialHTTPO
     const task = (async () => {
       validateInternalRequest(request, port);
       const path = request.url!;
+      const sourceReview = /^\/internal\/source-review\/(inspect|begin|propose|confirm|reject|hold|release|withdraw)$/.exec(path);
+      if (sourceReview) {
+        if (request.method !== 'POST') reject(405, 'METHOD_NOT_ALLOWED');
+        const token = credential(request);
+        const action = sourceReview[1] as SourceReviewAction | 'inspect';
+        const body = sourceReviewBody(await jsonBody(request), action);
+        const workflow = new AuthenticatedSourceReview(repository, access, { resourcePolicy: scopedPolicy });
+        if (action !== 'inspect') await workflow[action](token, body.sourceId, body.input!);
+        // A mutation has already committed here. A later response failure does not roll it back.
+        // Reauthorize current source inspection before disclosing its resulting review status.
+        await workflow.withSummary(token, body.sourceId, (summary, assertCurrent) => {
+          const serialized = JSON.stringify(summary);
+          if (Buffer.byteLength(serialized, 'utf8') > sourceResponseLimit) throw new SecurityError('STORAGE_UNAVAILABLE');
+          assertCurrent();
+          sendSerialized(response, 200, serialized, requestId);
+        });
+        return;
+      }
       if (path.split('?')[0] === '/internal/source-queue') {
         if (request.method !== 'GET' && request.method !== 'HEAD') reject(405, 'METHOD_NOT_ALLOWED');
         if (request.headers['content-length'] !== undefined && request.headers['content-length'] !== '0') reject();

@@ -3,6 +3,7 @@ import { canonicalURL, validateSource, type Source, type State } from '../newsro
 import type { JsonRepository } from '../newsroom/store.ts';
 import { metadata, retentionDeadline, sourceId, timestamp } from '../ingestion/metadata.ts';
 import { eligibleSource } from '../ingestion/eligibility.ts';
+import { sourceReviewSummary, sourceReviewValidUntil } from '../source-review/domain.ts';
 import { policyStatus, type RegistryPolicy } from '../ingestion/policies.ts';
 import type { ManagedSource } from '../ingestion/records.ts';
 import { sourceQueueViews, type SourceQueueEntry, type SourceQueuePage, type SourceQueueQuery, type SourceQueueView } from './types.ts';
@@ -197,6 +198,14 @@ function projection(state: State, at: string, allowed?: ReadonlySet<string>): { 
   // Origin validity still uses authoritative repository records. Its identity
   // requires a separate read assignment before it may enter the visible view.
   if (allowed) for (const row of visible) if (row.origin && !allowed.has(row.origin)) row.entry.relationship = null;
+  // Only the authenticated scoped view receives review metadata. Private history,
+  // evidence and reviewer identities never enter the DTO or its cursor fingerprint.
+  if (allowed) for (const row of visible) if (state.sourceReviews?.some(review => review.sourceId === row.id)) {
+    const review = sourceReviewSummary(state, row.id, at);
+    row.entry.review = { status: review.status, revision: review.reviewRevision, blocked: review.blocked,
+      proposalPending: review.pendingProposal, independentlyResolved: review.independentlyResolved, reviewAllowed: review.reviewAllowed };
+    if (review.status === 'ON_HOLD') { row.entry.sourceEligible = false; row.entry.blockedReason = 'SOURCE_REVIEW_HOLD'; }
+  }
   return { rows: visible, hold };
 }
 function matches(entry: SourceQueueEntry, view: SourceQueueView): boolean {
@@ -264,6 +273,10 @@ export function sourceQueueValidUntil(state: State, at: string, scope?: SourceQu
       }
     }
     for (const decision of state.provenanceDecisions as unknown as Row[]) if (relevant.has(decision.sourceId as string)) consider(decision.at);
+    if (authorized) for (const id of authorized.allowed) if (state.sourceReviews?.some(review => review.sourceId === id)) {
+      const reviewCutoff = sourceReviewValidUntil(state, id, at);
+      if (reviewCutoff !== null) considerNumber(reviewCutoff);
+    }
     // Any deletion marker can establish the repository-wide retention review hold.
     for (const deletion of state.deletions as unknown as Row[]) { consider(deletion.at); consider(deletion.expiresAt); }
     return Number.isFinite(cutoff) ? cutoff : null;

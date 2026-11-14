@@ -161,3 +161,18 @@
 - [x] Record actual exact-Node-22.16.0 validation, race/authorization outcomes, artifact digest/reproducibility and skips in [DL-007B validation](DL-007B_VALIDATION.md).
 - [ ] Complete remaining Windows/physical acceptance and production identity, exclusive guarded routing, tenant/assignment lifecycle, storage and external-copy retention review before activation.
 - [ ] Obtain separate authorization for remote promotion, Render changes, provider activation or publication.
+
+## DL-007C — Controlled source review and provenance decisions
+
+- [x] Add separate source recommendation, resolution, hold and release permissions, with exact source assignments and no reporter/administrator inheritance.
+- [x] Preserve source inspection as a separate permission; require current sessions and read assignments for target, evidence and origin resources.
+- [x] Record bounded evidence-backed proposals and exact revision history without changing eligibility before independent confirmation.
+- [x] Enforce authenticated identity separation between proposer and confirmer, existing classification/contradiction/syndication rules, and unchanged rights/retention grants.
+- [x] Commit review/source/history/receipts atomically with final authorization, revision and lifecycle checks; cover stale/concurrent/revoked/expired/fault cases.
+- [x] Add only guarded development-loopback source-review endpoints and authorized safe review metadata; preserve public reader and fictional preview isolation.
+- [x] Remove identifying review/evidence/receipt linkage through local retention cleanup and document external-copy limits.
+- [x] Provide deterministic fictional review/revocation/no-publication demonstration and record executed exact-Node-22 checks in [DL-007C validation](DL-007C_VALIDATION.md).
+- [x] Preserve twelve-file LF public packaging and unchanged content digest, with clean reproducibility, staging/production smoke and offline release checks.
+- [ ] Complete remaining Windows/physical, native zoom, assistive-technology and compliant live Treasury/NWS acceptance separately.
+- [ ] Review production identity/bootstrap, tenant/assignment policy, exclusive guarded entry points, durable storage, retention, licensing and independent security before activation.
+- [ ] Obtain separate authorization before GitHub promotion, Render changes, real providers, scheduling, paid services or publication.

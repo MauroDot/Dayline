@@ -1,6 +1,9 @@
 import type { State } from '../newsroom/model.ts';
 import { timestamp } from '../ingestion/metadata.ts';
 import type { AuthenticatedAction, SecurityEvent } from './types.ts';
+import { assertSourceReviewCurrent, sourceReviewDependencyIds } from '../source-review/domain.ts';
+import type { SourceReviewAction } from '../source-review/types.ts';
+import type { Permission } from './types.ts';
 
 const lifetime = 7 * 86_400_000;
 const capacity = 512;
@@ -10,8 +13,27 @@ function recent(at: string, now: number): boolean {
   catch { return false; }
 }
 
-function eligibleReceipt(state: State, receipt: AuthenticatedAction): boolean {
+function eligibleReceipt(state: State, receipt: AuthenticatedAction, at: string): boolean {
   if (!state.identities.some(identity => identity.id === receipt.actorId)) return false;
+  if (receipt.resourceKind === 'SOURCE') {
+    // Source receipts are governed by the captured metadata grant, not merely the
+    // seven-day security cap. Holds/disputes intentionally block eligibility and
+    // must not erase a valid authenticated receipt for the blocking action.
+    const actionPermissions: Readonly<Record<SourceReviewAction, Permission>> = {
+      begin: 'SOURCE_REVIEW', propose: 'SOURCE_REVIEW', withdraw: 'SOURCE_REVIEW',
+      confirm: 'SOURCE_RESOLVE', reject: 'SOURCE_RESOLVE', hold: 'SOURCE_HOLD', release: 'SOURCE_RELEASE',
+    };
+    const history = state.sourceReviews?.find(row => row.sourceId === receipt.resourceId
+      && row.revision === receipt.resourceVersion && row.actorId === receipt.actorId && row.at === receipt.at
+      && actionPermissions[row.action] === receipt.permission);
+    if (!history) return false;
+    try {
+      const references = [receipt.resourceId, ...history.evidenceReferences,
+        ...(history.proposal ? [...history.proposal.evidenceReferences, ...(history.proposal.originId ? [history.proposal.originId] : [])] : [])];
+      for (const dependency of sourceReviewDependencyIds(state, references)) assertSourceReviewCurrent(state, dependency, at);
+      return true;
+    } catch { return false; }
+  }
   if (receipt.resourceKind === 'STORY') {
     const history = state.revisions.filter(story => story.id === receipt.resourceId);
     return history.length > 0 && !history.at(-1)!.retentionRedacted
@@ -50,7 +72,7 @@ export function pruneSecurityState(state: State, at: string): number {
     sessionRef: event.sessionRef, subjectRef: event.subjectRef, permission: event.permission,
   })));
   state.authenticatedActions = newest(state.authenticatedActions.filter(receipt => recent(receipt.at, now)
-    && eligibleReceipt(state, receipt)).map((receipt): AuthenticatedAction => ({
+    && eligibleReceipt(state, receipt, at)).map((receipt): AuthenticatedAction => ({
     id: receipt.id, actorId: receipt.actorId, identityRevision: receipt.identityRevision,
     sessionRef: receipt.sessionRef, permission: receipt.permission, resourceKind: receipt.resourceKind,
     resourceId: receipt.resourceId, resourceVersion: receipt.resourceVersion, at: receipt.at,

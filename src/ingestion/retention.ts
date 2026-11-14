@@ -115,10 +115,41 @@ export async function cleanupRetention(repository: JsonRepository, at: string, d
     state.sources = state.sources.filter(source => !selected.has(source.id));
     state.managedSources = state.managedSources.filter(record => !selected.has(record.sourceId));
     state.quarantine = state.quarantine.filter(record => !selected.has(record.sourceId));
-    state.provenanceDecisions = state.provenanceDecisions.filter(decision => !selected.has(decision.sourceId)
-      && !(decision.originId && selected.has(decision.originId)));
+    state.provenanceDecisions = state.provenanceDecisions.filter(decision => !removed.has(decision.sourceId)
+      && !(decision.originId && removed.has(decision.originId))
+      && !decision.evidenceReferences.some(reference => removed.has(reference)));
     state.audit = state.audit.filter(event => !event.subjectId || !selected.has(event.subjectId));
     state.deletions = state.deletions.filter(marker => !selected.has(marker.sourceId));
+    // Review histories contain source identities, evidence links and authenticated
+    // reviewers. They have no separate retention grant and cannot outlive any
+    // referenced retained source. Drop the whole linked history, including old
+    // revisions, rather than leave a digest or an identifying replay marker.
+    if (state.sourceReviews) {
+      const remaining = new Map([...state.managedSources, ...state.quarantine].map(record => [record.sourceId, record]));
+      const permitted = (id: string) => {
+        const record = remaining.get(id);
+        return !!record && !removed.has(id) && !state.deletions.some(marker => marker.sourceId === id)
+          && expiryReason(record, at, now) === undefined;
+      };
+      const redacted = new Set(state.sourceReviews.filter(review => {
+        const ids = [review.sourceId, ...review.evidenceReferences, ...(review.proposal
+          ? [...review.proposal.evidenceReferences, ...(review.proposal.originId ? [review.proposal.originId] : [])] : [])];
+        return ids.some(id => !permitted(id));
+      }).map(review => review.sourceId));
+      state.sourceReviews = state.sourceReviews.filter(review => !redacted.has(review.sourceId));
+      state.provenanceDecisions = state.provenanceDecisions.filter(decision => decision.actorAssertion !== 'authenticated-source-review'
+        || (!redacted.has(decision.sourceId) && permitted(decision.sourceId)
+          && decision.evidenceReferences.every(reference => permitted(reference))
+          && (!decision.originId || permitted(decision.originId))));
+      state.authenticatedActions = state.authenticatedActions.filter(action => action.resourceKind !== 'SOURCE'
+        || (permitted(action.resourceId) && !redacted.has(action.resourceId)));
+      if (redacted.size) state.retentionReviewRequired = true;
+    } else {
+      // SOURCE receipts must not become an orphaned source-identifying database.
+      const remaining = new Set([...state.managedSources, ...state.quarantine].map(record => record.sourceId));
+      state.authenticatedActions = state.authenticatedActions.filter(action => action.resourceKind !== 'SOURCE'
+        || (remaining.has(action.resourceId) && !removed.has(action.resourceId)));
+    }
     for (const [sourceId, candidate] of selected) {
       // No identity, provenance, URL, publisher, evidence, or asserted actor is
       // retained when the captured policy does not permit minimal audit.

@@ -14,6 +14,7 @@
     "ingest:fixture": "node --experimental-strip-types src/ingestion/runner.ts",
     "source-queue:fixture": "node --experimental-strip-types src/source-queue/runner.ts",
     "source-access:fixture": "node --experimental-strip-types src/security/source-runner.ts",
+    "source-review:fixture": "node --experimental-strip-types src/security/source-review-runner.ts",
     "retention:fixture": "node --experimental-strip-types src/ingestion/cleanup-runner.ts",
     "edition:fixture": "node --experimental-strip-types src/editions/runner.ts",
     "schedule:fixture": "node --experimental-strip-types src/scheduling/runner.ts",
