@@ -5,6 +5,7 @@ import { sourceId, timestamp } from '../ingestion/metadata.ts';
 import { invalidateDrafts } from '../editorial/lifecycle.ts';
 import { invalidateEditions } from '../editions/lifecycle.ts';
 import { eligibleSource } from '../ingestion/eligibility.ts';
+import { assertStorySourceHandoff } from '../source-handoff/domain.ts';
 
 const transitions: Record<Status, Status[]> = {
   INGESTED: ['CLUSTERED', 'ON_HOLD', 'REJECTED'], CLUSTERED: ['DRAFT', 'ON_HOLD', 'REJECTED'],
@@ -23,13 +24,14 @@ function audit(state: State, action: string, actor: string, story: Story | null,
   const event: Audit = { id: randomUUID(), storyId: story?.id ?? null, action, actor: actorName(actor), at, version: story?.version ?? null };
   state.audit.push(event);
 }
-function checkStory(story: Story, state: State): void {
+function checkStory(story: Story, state: State, at: string): void {
   if (![story.id, story.headline, story.topic, story.summary, story.geography].every(x => typeof x === 'string' && x.trim())) throw Error('Missing story fields');
   if (!Number.isFinite(Date.parse(story.firstSeenAt)) || !Number.isFinite(Date.parse(story.updatedAt)) || (story.eventAt !== null && !Number.isFinite(Date.parse(story.eventAt)))) throw Error('Invalid story timestamp');
   if (!Array.isArray(story.sourceIds) || !Array.isArray(story.evidence)) throw Error('Invalid story references');
   const ids = new Set(state.sources.map(s => s.id));
   if (story.sourceIds.some(id => !ids.has(id))) throw Error('Unknown story source');
   for (const e of story.evidence) { validateEvidence(e, ids); if ([...e.support, ...e.contradict].some(id => !story.sourceIds.includes(id))) throw Error('Evidence source not associated with story'); }
+  assertStorySourceHandoff(state, story, at);
 }
 export class Newsroom {
   private readonly repository: JsonRepository;
@@ -61,7 +63,7 @@ export class Newsroom {
     return this.repository.transact(state => {
       const at = this.now();
       if (state.revisions.some(s => s.id === story.id)) throw Error('Duplicate story');
-      const revision: Story = { ...story, status: 'INGESTED', version: 1, updatedAt: at }; checkStory(revision, state);
+      const revision: Story = { ...story, status: 'INGESTED', version: 1, updatedAt: at }; checkStory(revision, state, at);
       state.revisions.push(structuredClone(revision)); audit(state, 'STORY_CREATED', actor, revision, at); return revision;
     });
   }
@@ -74,7 +76,7 @@ export class Newsroom {
       const allowed = ['headline', 'summary', 'topic', 'geography', 'eventAt', 'clusterId', 'evidence', 'sourceIds'];
       if (Object.keys(patch).some(key => !allowed.includes(key))) throw Error('Invalid edit field');
       const revision: Story = { ...prior, ...structuredClone(patch), status: ['APPROVED', 'NEEDS_REVIEW', 'CORRECTION_REQUIRED'].includes(prior.status) ? 'DRAFT' : prior.status, version: prior.version + 1, updatedAt: at };
-      checkStory(revision, state); state.revisions.push(revision); invalidateDrafts(state, at); invalidateEditions(state, at); audit(state, 'STORY_EDITED', actor, revision, at); return revision;
+      checkStory(revision, state, at); state.revisions.push(revision); invalidateDrafts(state, at); invalidateEditions(state, at); audit(state, 'STORY_EDITED', actor, revision, at); return revision;
     });
   }
   async transition(id: string, next: Status, actor: string): Promise<Story> {
@@ -82,6 +84,7 @@ export class Newsroom {
       const at = this.now();
       const prior = current(state, id); const reviewer = actorName(actor);
       if (prior.retentionRedacted) throw Error('Retention-redacted history cannot transition');
+      if (!['ON_HOLD', 'REJECTED'].includes(next)) assertStorySourceHandoff(state, prior, at);
       if (state.retentionReviewRequired && ['APPROVED', 'PUBLISHED'].includes(next)) throw Error('Retention policy review required before approval or publication');
       if (['APPROVED', 'PUBLISHED'].includes(next) && prior.sourceIds.some(sourceId => { const source = state.sources.find(s => s.id === sourceId); return !source || !eligibleSource(state, source, at); })) throw Error('Ineligible source for editorial approval or publication');
       if (!transitions[prior.status].includes(next)) throw Error('Invalid editorial transition');

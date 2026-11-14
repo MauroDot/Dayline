@@ -106,7 +106,9 @@ export async function cleanupRetention(repository: JsonRepository, at: string, d
     if (selected.size || priorMarkers.size || orphanAudits.size) state.retentionReviewRequired = true;
     state.deletions = state.deletions.filter(marker => !expiredMarkers.has(marker.sourceId));
     const present = new Set([...state.sources.map(s => s.id), ...state.quarantine.map(q => q.sourceId)]);
-    const historicalReferences = state.revisions.flatMap(story => [...story.sourceIds, ...story.evidence.flatMap(e => [...e.support, ...e.contradict])]);
+    const historicalReferences = state.revisions.flatMap(story => [...story.sourceIds,
+      ...(story.sourceHandoff?.dependencies.map(dependency => dependency.id) ?? []),
+      ...story.evidence.flatMap(e => [...e.support, ...e.contradict])]);
     const removed = new Set([...selected.keys(), ...expiredMarkers, ...orphanAudits, ...historicalReferences.filter(id => !present.has(id))]);
     const historiesRedacted = redactEditorialHistory(state, removed, at);
     state.audit = state.audit.filter(event => !event.subjectId || !expiredMarkers.has(event.subjectId));

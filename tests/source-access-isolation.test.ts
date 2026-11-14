@@ -29,7 +29,7 @@ test('authenticated source access and synthetic credentials remain outside the a
     assert.deepEqual(files, [...requiredPublicFiles, ...optionalPublicFiles, 'package.json', manifestName].sort());
     assert.equal(files.length, 12);
     assert.equal(Object.keys(manifest.files).length, 11);
-    assert.equal(files.some(name => /security|source-queue|source-access|source-review|fixtures|tests|\.gitattributes/.test(name)), false);
+    assert.equal(files.some(name => /security|source-queue|source-access|source-review|source-handoff|editorial-workflow|fixtures|tests|\.gitattributes/.test(name)), false);
     assert.deepEqual(await inspectPublicArtifact(artifact), manifest);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
@@ -49,7 +49,9 @@ test('public runtime never mounts authenticated source reads or administrative m
         '/internal/source-review/inspect', '/internal/source-review/begin', '/internal/source-review/propose',
         '/internal/source-review/confirm', '/internal/source-review/reject', '/internal/source-review/hold',
         '/internal/source-review/release', '/internal/source-review/withdraw', '/api/source-review',
-        '/src/security/source-review.ts', '/src/source-review/domain.ts', '/fixtures/source-review-fiction.ts']) {
+        '/src/security/source-review.ts', '/src/source-review/domain.ts', '/fixtures/source-review-fiction.ts',
+        '/internal/source-handoff/inspect', '/internal/source-handoff/prepare', '/api/source-handoff',
+        '/src/security/source-handoff.ts', '/src/source-handoff/domain.ts', '/fixtures/editorial-workflow-fiction.ts']) {
         for (const method of ['GET', 'HEAD']) {
           const response = await fetch(base + route, { method, headers: { Authorization: 'Bearer fictional-isolation-sentinel' } });
           assert.equal(response.status, 404, `${mode} ${method} ${route}`);
@@ -62,6 +64,13 @@ test('public runtime never mounts authenticated source reads or administrative m
         const response = await fetch(base + '/internal/source-review/' + action, { method: 'POST',
           headers: { Authorization: 'Bearer fictional-isolation-sentinel', 'Content-Type': 'application/json' },
           body: JSON.stringify({ sourceId: 'fictional-isolation-sentinel' }) });
+        assert.equal(response.status, 405);
+        assert.equal((await response.text()).includes('fictional-isolation-sentinel'), false);
+      }
+      for (const action of ['inspect', 'prepare']) {
+        const response = await fetch(base + '/internal/source-handoff/' + action, { method: 'POST',
+          headers: { Authorization: 'Bearer fictional-isolation-sentinel', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceIds: ['fictional-isolation-sentinel'] }) });
         assert.equal(response.status, 405);
         assert.equal((await response.text()).includes('fictional-isolation-sentinel'), false);
       }
