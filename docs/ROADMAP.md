@@ -191,3 +191,18 @@
 - [ ] Complete remaining Windows/physical, native zoom, assistive-technology and separately compliant live Treasury/NWS acceptance.
 - [ ] Review production identity, exclusive routing, tenant/assignment lifecycle, transactional storage, retention, licensing and independent security before activation.
 - [ ] Obtain separate authorization before any GitHub promotion, hosting change, live provider, scheduler, paid service or publication.
+
+## DL-007E — Internal editorial operations interface
+
+- [x] Add a separately enabled development-only loopback interface outside public-reader assets and release packaging.
+- [x] Reuse current roles, exact resource assignments and existing source/story/edition mutations without a parallel database or new authority.
+- [x] Provide assigned-source inspection, evidence-backed recommendations, independent confirmation, explicit source selection and human-authored preparation; preserve separate story approval and edition readiness.
+- [x] Withhold inaccessible/private/expired content in guarded operational projections; invalidate stale selections and short-lived display leases.
+- [x] Provide a disposable fictional browser harness with private-pipe credential transfer, explicit in-memory connection and no HTTP login or persistent credentials/drafts.
+- [x] Support semantic controls, visible focus, consequential-action confirmation, keyboard workflows, responsive layout and CSS enlargement/reflow.
+- [x] Record actual Node 22.16.0 backend/browser/accessibility, artifact reproducibility, isolation, smoke and offline release results in [DL-007E validation](DL-007E_VALIDATION.md).
+- [ ] Complete remaining Windows physical, native browser zoom, assistive-technology and separately authorized live Treasury/NWS acceptance.
+- [ ] Review production identity/bootstrap, tenant assignments, exclusive authenticated entry points, transactional storage, retention, licensing and independent security before activation.
+- [ ] Obtain separate authorization before any GitHub promotion, hosting change, live provider, scheduler, paid service or publication.
+
+The accepted and merged Foundation 001 development milestone remains historical acceptance of its verified baseline. DL-007E regression and production requirements do not reverse that acceptance. See [the internal interface guide](EDITORIAL_OPERATIONS_UI.md) for the local workflow and trust limits.

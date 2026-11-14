@@ -252,3 +252,19 @@ The offline fixture uses synthetic identities, fictional sources and separately 
 The private development listener adds only `POST /internal/source-handoff/inspect` with `{sourceIds}` and `POST /internal/source-handoff/prepare` with `{sources, story}`. Source-state revision tokens grant no authority. An immutable private source binding is carried through the prepared story: relevant source/proof/rights changes prevent stale editing, approval or edition preparation and require a new explicit preparation rather than a silent refresh. Existing unbound legacy fixtures remain trusted development paths, not production authorization.
 
 The public reader, homepage, official-data panels, twelve-file artifact and LF contract remain unchanged. No live provider, production identity, paid service, Render operation or publication is activated. See [workflow and permission contract](docs/EDITORIAL_WORKFLOW_DESIGN.md), [security design](docs/SECURITY_DESIGN.md#dl-007d-source-to-story-handoff) and [DL-007D validation](docs/DL-007D_VALIDATION.md) for executed checks and remaining physical/production acceptance.
+
+## Internal editorial operations interface
+
+DL-007E provides a separate development-only interface for the existing authenticated source, story and edition workflows. It shows only currently assigned resources, reuses the existing permissions and mutations, and keeps source provenance confirmation, story approval and edition readiness separate. A recommendation or a selected source grants no additional authority. The existing public homepage and fictional reader previews keep their behavior.
+
+```bash
+npm run editorial-operations:dev
+```
+
+Use Node.js 22.16.0 and the existing Python Playwright/Chromium browser prerequisites; set `CHROMIUM_PATH` if the browser is installed elsewhere. The command creates a disposable fictional repository and starts its own private loopback development listener and headed browser. The interface labels its fixed historical evaluation time. Choose a synthetic role and explicitly connect; this trusted fixture role chooser is not a production login. Refreshing the page starts disconnected.
+
+`npm run editorial-operations:fixture` runs an offline JSON demonstration without a browser or listener, using another disposable fictional repository. It records explicit independent provenance confirmation, human-supplied preparation, separate story approval and an edition remaining `ASSEMBLING`; it prints no credential and contacts no provider.
+
+The harness transfers synthetic credentials through private process pipes and a trusted browser binding. The interface keeps the selected bearer only in memory and sends it only in the Authorization header. There is no HTTP login, credential-minting route or persistent browser draft. Logout, authentication loss and page lifecycle changes clear protected data; short response leases and active revalidation bound how long an already displayed projection remains visible. Current server authorization still applies to every read and action.
+
+The UI shell and its assets live outside `public/`, require separate explicit development opt-in and are absent from the public-reader artifact. No real account, provider, scheduler, publication, AI service, payment or hosting change is enabled. See [the operator guide](docs/EDITORIAL_OPERATIONS_UI.md) for startup, workflow, credential handling and limits, [security design](docs/SECURITY_DESIGN.md#dl-007e-internal-operations-interface) for the trust boundary, and [DL-007E validation](docs/DL-007E_VALIDATION.md) for executed checks and pending acceptance.

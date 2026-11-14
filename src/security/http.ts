@@ -1,6 +1,7 @@
 /** Explicit synthetic development listener; never installed on the public reader server. */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { Socket } from 'node:net';
 import { JsonRepository } from '../newsroom/store.ts';
@@ -10,6 +11,7 @@ import { AuthenticatedEditorial } from './editorial.ts';
 import { AuthenticatedSourceQueue } from './source.ts';
 import { AuthenticatedSourceReview } from './source-review.ts';
 import { AuthenticatedSourceHandoff } from './source-handoff.ts';
+import { AuthenticatedEditorialOperations } from './operations.ts';
 import type { SourceReviewAction, SourceReviewInput } from '../source-review/types.ts';
 import type { SourceSelection } from '../source-handoff/types.ts';
 import { SourceQueueError } from '../source-queue/service.ts';
@@ -22,6 +24,8 @@ import type { Permission, Principal } from './types.ts';
 
 export interface InternalEditorialHTTPOptions {
   enabled?: boolean;
+  /** Separate, explicit development opt-in. Existing internal callers receive no UI routes. */
+  operationsUI?: boolean;
   mode?: 'development' | 'production' | 'test';
   repository: JsonRepository;
   access: AccessControl;
@@ -91,6 +95,15 @@ function credential(request: IncomingMessage): string {
 function exact(value: unknown, keys: string[]): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     && Object.keys(value).length === keys.length && Object.keys(value).every(key => keys.includes(key));
+}
+function operationsQuery(value: unknown): SourceQueueQuery {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).some(key => !['view', 'limit', 'cursor'].includes(key))) reject();
+  const query = value as Record<string, unknown>;
+  if (Object.hasOwn(query, 'view') && (typeof query.view !== 'string' || !(sourceQueueViews as readonly string[]).includes(query.view))
+    || Object.hasOwn(query, 'limit') && (!Number.isSafeInteger(query.limit) || (query.limit as number) < 1 || (query.limit as number) > 50)
+    || Object.hasOwn(query, 'cursor') && (typeof query.cursor !== 'string' || !/^[A-Za-z0-9_-]{1,1024}$/.test(query.cursor))) reject();
+  return query as SourceQueueQuery;
 }
 function revision(value: unknown): value is number { return Number.isSafeInteger(value) && (value as number) > 0; }
 function fingerprint(value: unknown): value is string { return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value); }
@@ -162,6 +175,25 @@ function sendSerialized(response: ServerResponse, status: number, serialized: st
 function send(response: ServerResponse, status: number, value: unknown, requestId: string, head = false): void {
   sendSerialized(response, status, JSON.stringify(value), requestId, head);
 }
+/** Only these three inert shell files are readable; never resolve a request path on disk. */
+const operationsAssets = new Map([
+  ['/internal/operations', { file: 'index.html', type: 'text/html; charset=utf-8' }],
+  ['/internal/operations/operations.css', { file: 'operations.css', type: 'text/css; charset=utf-8' }],
+  ['/internal/operations/operations.js', { file: 'operations.js', type: 'text/javascript; charset=utf-8' }],
+]);
+async function sendOperationsAsset(request: IncomingMessage, response: ServerResponse, path: string, requestId: string): Promise<void> {
+  if (request.method !== 'GET' && request.method !== 'HEAD') reject(405, 'METHOD_NOT_ALLOWED');
+  if (request.headers['content-length'] !== undefined && request.headers['content-length'] !== '0') reject();
+  const asset = operationsAssets.get(path)!;
+  const bytes = await readFile(new URL(`../../internal/operations/${asset.file}`, import.meta.url));
+  if (bytes.length > sourceResponseLimit) throw new SecurityError('STORAGE_UNAVAILABLE');
+  if (response.destroyed || response.writableEnded) return;
+  response.writeHead(200, { 'Content-Type': asset.type, 'Content-Length': bytes.length, 'Cache-Control': 'no-store, max-age=0',
+    'Pragma': 'no-cache', 'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    'Referrer-Policy': 'no-referrer', 'X-Request-ID': requestId, 'Connection': 'close' });
+  response.end(request.method === 'HEAD' ? undefined : bytes);
+}
 function failure(error: unknown): { status: number; code: string } {
   if (error instanceof RequestError) return { status: error.status, code: error.code };
   if (error instanceof SourceQueueError) {
@@ -212,6 +244,7 @@ export async function startInternalEditorialHTTP(options: InternalEditorialHTTPO
     || typeof options.repository.file !== 'string' || resolve(options.repository.file) !== options.access.repositoryFile
     || !Number.isInteger(options.port ?? 0) || (options.port ?? 0) < 0 || (options.port ?? 0) > 65535) throw new Error('INVALID_INTERNAL_CONFIGURATION');
   const { repository, access, policy } = options;
+  const operationsEnabled = options.operationsUI === true && process.env.NODE_ENV !== 'staging';
   // Listener-local revocation requests fence concurrent HTTP actions before waiting for the JSON lock.
   // Entries contain only registered opaque session IDs and expiry metadata, never bearer credentials.
   let closing = false;
@@ -225,6 +258,12 @@ export async function startInternalEditorialHTTP(options: InternalEditorialHTTPO
     if (['SOURCE_READ', 'SOURCE_REVIEW', 'SOURCE_RESOLVE', 'SOURCE_HOLD', 'SOURCE_RELEASE'].includes(permission)) return policy.authorize(principal, permission, targets, state);
     assertResourcePolicy(policy, principal, permission, targets, state);
   }, ...(typeof policy.sourceReadRevision === 'function' ? { sourceReadRevision: () => policy.sourceReadRevision!() } : {}) };
+  // Operations projections distinguish explicit per-resource denials from malformed policy decisions.
+  // Preserve raw return values here so asynchronous/nonvoid policies fail the complete read.
+  const operationsPolicy: ResourcePolicy = { authorize: (principal, permission, targets, state) => {
+    fence(principal);
+    return policy.authorize(principal, permission, targets, state);
+  }, ...(typeof policy.sourceReadRevision === 'function' ? { sourceReadRevision: () => policy.sourceReadRevision!() } : {}) };
   let port = 0;
   const sockets = new Set<Socket>();
   const server = createServer({ maxHeaderSize: 12_288, requestTimeout: 5000, headersTimeout: 5000, connectionsCheckingInterval: 1000 }, (request, response) => {
@@ -232,6 +271,32 @@ export async function startInternalEditorialHTTP(options: InternalEditorialHTTPO
     const task = (async () => {
       validateInternalRequest(request, port);
       const path = request.url!;
+      if (operationsEnabled && operationsAssets.has(path)) {
+        await sendOperationsAsset(request, response, path, requestId); return;
+      }
+      const operation = operationsEnabled && /^\/internal\/operations\/(overview|sources|source|stories|editions)$/.exec(path);
+      if (operation) {
+        if (request.method !== 'POST') reject(405, 'METHOD_NOT_ALLOWED');
+        const token = credential(request), body = await jsonBody(request);
+        const workflow = new AuthenticatedEditorialOperations(repository, access, { resourcePolicy: operationsPolicy, assertPrincipal: fence });
+        const disclose = (value: unknown, assertCurrent: () => void) => {
+          const serialized = JSON.stringify(value);
+          if (Buffer.byteLength(serialized, 'utf8') > sourceResponseLimit) throw new SecurityError('STORAGE_UNAVAILABLE');
+          assertCurrent();
+          sendSerialized(response, 200, serialized, requestId);
+        };
+        if (operation[1] === 'sources') await workflow.withSources(token, operationsQuery(body), disclose);
+        else if (operation[1] === 'source') {
+          if (!exact(body, ['sourceId']) || !managedSourceId(body.sourceId)) reject();
+          await workflow.withSource(token, body.sourceId, disclose);
+        } else {
+          if (!exact(body, [])) reject();
+          if (operation[1] === 'overview') await workflow.withOverview(token, disclose);
+          else if (operation[1] === 'stories') await workflow.withStories(token, disclose);
+          else await workflow.withEditions(token, disclose);
+        }
+        return;
+      }
       const sourceHandoff = /^\/internal\/source-handoff\/(inspect|prepare)$/.exec(path);
       if (sourceHandoff) {
         if (request.method !== 'POST') reject(405, 'METHOD_NOT_ALLOWED');

@@ -107,7 +107,10 @@ export async function smokePublicArtifact(directory = resolve('dist/public-reade
         if (!healthy) throw new SmokeError('SMOKE_STARTUP_FAILED');
         for (const [path, method, expected] of [['/', 'GET', 200], ['/api/ready', 'GET', 503],
           ['/internal/principal', 'GET', 404], ['/internal/stories', 'POST', 405],
-          ['/dev/edition', 'GET', 404], ['/.env', 'GET', 404], ['/src/security/http.ts', 'GET', 404]] as const) {
+          ['/dev/edition', 'GET', 404], ['/.env', 'GET', 404], ['/src/security/http.ts', 'GET', 404],
+          ['/internal/operations', 'GET', 404], ['/internal/operations/operations.js', 'GET', 404],
+          ['/internal/operations/operations.css', 'HEAD', 404], ['/internal/operations/overview', 'POST', 405],
+          ['/internal/operations/login', 'POST', 405]] as const) {
           const response = await fetch(origin + path, { method, headers: { Authorization: 'Bearer synthetic_smoke_sentinel' }, signal: AbortSignal.timeout(2000) });
           const text = await response.text();
           assert.equal(response.status, expected, 'ARTIFACT_ROUTE_ISOLATION_FAILED');
