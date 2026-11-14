@@ -176,3 +176,18 @@
 - [ ] Complete remaining Windows/physical, native zoom, assistive-technology and compliant live Treasury/NWS acceptance separately.
 - [ ] Review production identity/bootstrap, tenant/assignment policy, exclusive guarded entry points, durable storage, retention, licensing and independent security before activation.
 - [ ] Obtain separate authorization before GitHub promotion, Render changes, real providers, scheduling, paid services or publication.
+
+## DL-007D — Editorial workflow integration
+
+- [x] Connect existing discovery/inspection, independent provenance review, eligible source selection and human-authored story preparation without a parallel database.
+- [x] Reuse `SOURCE_READ` plus exact `STORY_CREATE` authority; preserve all existing role/action boundaries and confer no ownership from source selection.
+- [x] Require independently resolved eligible sources, current licensed rights/retention and complete exact proof/origin assignments; recommendations alone remain insufficient.
+- [x] Bind explicit human story evidence and source identities to immutable trusted source/dependency revisions; prevent substitution, duplicates and caller-supplied authority.
+- [x] Recheck session, roles, scope, revisions and lifecycle at commit; preserve atomic story/history/receipt behavior under concurrency and faults.
+- [x] Preserve source-state continuity through story edits/approval and edition assembly/readiness; require new explicit preparation after relevant changes.
+- [x] Redact source-bound historical story content and private bindings when target/proof/origin retention fails.
+- [x] Add only guarded private development handoff endpoints and an offline fictional integration demonstration; preserve public reader and artifact isolation.
+- [x] Record exact Node 22.16.0 tests, platform skips, public digest, clean reproducibility, smoke and offline checks in [DL-007D validation](DL-007D_VALIDATION.md).
+- [ ] Complete remaining Windows/physical, native zoom, assistive-technology and separately compliant live Treasury/NWS acceptance.
+- [ ] Review production identity, exclusive routing, tenant/assignment lifecycle, transactional storage, retention, licensing and independent security before activation.
+- [ ] Obtain separate authorization before any GitHub promotion, hosting change, live provider, scheduler, paid service or publication.

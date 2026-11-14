@@ -4,6 +4,7 @@ import type { AuthenticatedAction, SecurityEvent } from './types.ts';
 import { assertSourceReviewCurrent, sourceReviewDependencyIds } from '../source-review/domain.ts';
 import type { SourceReviewAction } from '../source-review/types.ts';
 import type { Permission } from './types.ts';
+import { assertStorySourceHandoff } from '../source-handoff/domain.ts';
 
 const lifetime = 7 * 86_400_000;
 const capacity = 512;
@@ -36,6 +37,8 @@ function eligibleReceipt(state: State, receipt: AuthenticatedAction, at: string)
   }
   if (receipt.resourceKind === 'STORY') {
     const history = state.revisions.filter(story => story.id === receipt.resourceId);
+    const current = history.at(-1);
+    if (current?.sourceHandoff) { try { assertStorySourceHandoff(state, current, at); } catch { return false; } }
     return history.length > 0 && !history.at(-1)!.retentionRedacted
       && history.some(story => story.version === receipt.resourceVersion && !story.retentionRedacted);
   }

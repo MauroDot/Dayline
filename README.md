@@ -238,3 +238,17 @@ npm run source-review:fixture
 This offline command uses only temporary fictional metadata and synthetic credentials. It demonstrates review, proposal, self-confirmation denial, independent confirmation, blocked disputed metadata and session revocation while leaving story/edition approval and publication unchanged. It accepts no repository path, live-provider mode or external credential.
 
 The existing explicitly enabled development-only loopback listener adds strict JSON `POST /internal/source-review/{inspect,begin,propose,confirm,reject,hold,release,withdraw}` operations. Source identities occur only in bounded request bodies, never query strings or route parameters. Safe summaries expose review state and revision without reviewer identities, evidence lists or private audit history. The public reader and separate fictional source-queue preview remain isolated. See [source-review design](docs/SOURCE_REVIEW_DESIGN.md), [security boundary](docs/SECURITY_DESIGN.md#dl-007c-controlled-source-review) and [DL-007C validation](docs/DL-007C_VALIDATION.md).
+
+## Controlled source-to-story workflow
+
+DL-007D connects independently confirmed source provenance to a bounded authenticated story-preparation action. Discovery and recommendations remain insufficient: selected sources must still be eligible under captured excerpt/internal-analysis/audit rights, with current proof and origin dependencies. Preparation requires existing `SOURCE_READ` assignments for that complete graph and an existing `STORY_CREATE` assignment for the exact new story. It adds no permission, inferred ownership or automatic editorial approval.
+
+```bash
+npm run editorial-workflow:fixture
+```
+
+The offline fixture uses synthetic identities, fictional sources and separately supplied invented story content. It demonstrates independent provenance confirmation, source selection and an `INGESTED` story, plus disputed-source, substitution, revocation and expiry denials. Preparation generates no headline, claim, evidence or reviewer decision. Story approval, edition assembly and edition readiness remain separately authorized operations; nothing publishes or starts a scheduler.
+
+The private development listener adds only `POST /internal/source-handoff/inspect` with `{sourceIds}` and `POST /internal/source-handoff/prepare` with `{sources, story}`. Source-state revision tokens grant no authority. An immutable private source binding is carried through the prepared story: relevant source/proof/rights changes prevent stale editing, approval or edition preparation and require a new explicit preparation rather than a silent refresh. Existing unbound legacy fixtures remain trusted development paths, not production authorization.
+
+The public reader, homepage, official-data panels, twelve-file artifact and LF contract remain unchanged. No live provider, production identity, paid service, Render operation or publication is activated. See [workflow and permission contract](docs/EDITORIAL_WORKFLOW_DESIGN.md), [security design](docs/SECURITY_DESIGN.md#dl-007d-source-to-story-handoff) and [DL-007D validation](docs/DL-007D_VALIDATION.md) for executed checks and remaining physical/production acceptance.

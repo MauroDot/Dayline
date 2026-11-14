@@ -25,6 +25,7 @@ export function redactEditorialHistory(state: State, sourceIds: ReadonlySet<stri
   const cleanupAt = new Date(timestamp(at)).toISOString();
   const affected = new Set([
     ...state.revisions.filter(revision => revision.sourceIds.some(id => sourceIds.has(id))
+      || revision.sourceHandoff?.dependencies.some(dependency => sourceIds.has(dependency.id))
       || revision.evidence.some(evidence => [...evidence.support, ...evidence.contradict].some(id => sourceIds.has(id))))
       .map(revision => revision.id),
     ...state.audit.filter(event => event.subjectId && sourceIds.has(event.subjectId) && event.storyId !== null).map(event => event.storyId!),

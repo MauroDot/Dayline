@@ -7,6 +7,7 @@ import { policyStatus, type RegistryPolicy } from '../ingestion/policies.ts';
 import type { DraftPolicyReference, GroundedEvidence } from './types.ts';
 import { assertSafeSource, validateOutput } from './validation.ts';
 import { pruneSecurityState } from '../security/retention.ts';
+import { assertStorySourceHandoff, sourceHandoffValidUntil } from '../source-handoff/domain.ts';
 
 function sortedJSON(value: unknown): string {
   const sorted = (item: unknown): unknown => {
@@ -39,6 +40,7 @@ export function buildDraftContext(state: State, storyId: string, at: string): Dr
   if (state.retentionReviewRequired || !story || story.retentionRedacted
     || !['DRAFT', 'NEEDS_REVIEW'].includes(story.status)
     || !Number.isSafeInteger(story.version) || story.version < 1) throw Error('Ineligible editorial story');
+  assertStorySourceHandoff(state, story, at);
   if (!Array.isArray(story.evidence) || !story.evidence.length || story.evidence.length > 16
     || new Set(story.evidence.map(evidence => evidence.id)).size !== story.evidence.length
     || !Array.isArray(story.sourceIds) || !story.sourceIds.length
@@ -78,7 +80,8 @@ export function buildDraftContext(state: State, storyId: string, at: string): Dr
     return { id: entry.id, claim: entry.claim, support: [...entry.support],
       contradict: [...entry.contradict], uncertainty: entry.uncertainty };
   });
-  return { story: structuredClone(story), evidence, sourceIds: ids, policies, expiresAt: new Date(expires).toISOString() };
+  const boundExpiry = story.sourceHandoff ? sourceHandoffValidUntil(state, story.sourceHandoff.selected.map(row => row.id), at) : null;
+  return { story: structuredClone(story), evidence, sourceIds: ids, policies, expiresAt: new Date(Math.min(expires, boundExpiry ?? Infinity)).toISOString() };
 }
 
 function safeDate(value: string, fallback: string): string {

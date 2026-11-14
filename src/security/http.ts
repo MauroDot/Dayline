@@ -9,7 +9,9 @@ import type { EditionStatus, PlacementInput } from '../editions/types.ts';
 import { AuthenticatedEditorial } from './editorial.ts';
 import { AuthenticatedSourceQueue } from './source.ts';
 import { AuthenticatedSourceReview } from './source-review.ts';
+import { AuthenticatedSourceHandoff } from './source-handoff.ts';
 import type { SourceReviewAction, SourceReviewInput } from '../source-review/types.ts';
+import type { SourceSelection } from '../source-handoff/types.ts';
 import { SourceQueueError } from '../source-queue/service.ts';
 import { sourceQueueViews, type SourceQueueQuery } from '../source-queue/types.ts';
 import { AccessControl } from './service.ts';
@@ -110,6 +112,21 @@ function sourceReviewBody(value: unknown, action: SourceReviewAction | 'inspect'
     || (value.classification === 'SYNDICATED' ? !managedSourceId(value.originId) : value.originId !== null))) reject();
   const { sourceId, ...input } = value;
   return { sourceId, input: input as unknown as SourceReviewInput };
+}
+function sourceHandoffBody(value: unknown, action: 'inspect' | 'prepare'):
+  { sourceIds: string[] } | { sources: SourceSelection[]; story: Omit<Story, 'status' | 'version' | 'sourceHandoff'> } {
+  if (action === 'inspect') {
+    if (!exact(value, ['sourceIds']) || !Array.isArray(value.sourceIds) || value.sourceIds.length < 1 || value.sourceIds.length > 8
+      || value.sourceIds.some(id => !managedSourceId(id)) || new Set(value.sourceIds).size !== value.sourceIds.length) reject();
+    return { sourceIds: value.sourceIds as string[] };
+  }
+  if (!exact(value, ['sources', 'story']) || !Array.isArray(value.sources) || value.sources.length < 1 || value.sources.length > 8
+    || value.sources.some(row => !exact(row, ['id', 'revision']) || !managedSourceId(row.id) || !fingerprint(row.revision))
+    || new Set(value.sources.map(row => (row as { id: string }).id)).size !== value.sources.length
+    || !value.story || typeof value.story !== 'object' || Array.isArray(value.story)
+    || typeof (value.story as Record<string, unknown>).id !== 'string' || !idPattern.test((value.story as Record<string, unknown>).id as string)) reject();
+  // The facade applies the exact human-authored story/evidence schema before authorization or mutation.
+  return { sources: value.sources as SourceSelection[], story: value.story as Omit<Story, 'status' | 'version' | 'sourceHandoff'> };
 }
 async function jsonBody(request: IncomingMessage): Promise<unknown> {
   if (request.headers['content-type'] !== 'application/json') reject(415, 'UNSUPPORTED_MEDIA_TYPE');
@@ -215,6 +232,32 @@ export async function startInternalEditorialHTTP(options: InternalEditorialHTTPO
     const task = (async () => {
       validateInternalRequest(request, port);
       const path = request.url!;
+      const sourceHandoff = /^\/internal\/source-handoff\/(inspect|prepare)$/.exec(path);
+      if (sourceHandoff) {
+        if (request.method !== 'POST') reject(405, 'METHOD_NOT_ALLOWED');
+        const token = credential(request);
+        const action = sourceHandoff[1] as 'inspect' | 'prepare';
+        const body = sourceHandoffBody(await jsonBody(request), action);
+        const workflow = new AuthenticatedSourceHandoff(repository, access, { resourcePolicy: scopedPolicy });
+        if ('sourceIds' in body) {
+          await workflow.withSelection(token, body.sourceIds, (selection, assertCurrent) => {
+            const serialized = JSON.stringify(selection);
+            if (Buffer.byteLength(serialized, 'utf8') > sourceResponseLimit) throw new SecurityError('STORAGE_UNAVAILABLE');
+            assertCurrent();
+            sendSerialized(response, 200, serialized, requestId);
+          });
+        } else {
+          const prepared = await workflow.prepare(token, body);
+          // Commitment and final response disclosure are distinct. A later denial does not undo the accepted story.
+          await workflow.withPreparedStory(token, prepared.id, prepared.version, (receipt, assertCurrent) => {
+            const serialized = JSON.stringify(receipt);
+            if (Buffer.byteLength(serialized, 'utf8') > sourceResponseLimit) throw new SecurityError('STORAGE_UNAVAILABLE');
+            assertCurrent();
+            sendSerialized(response, 200, serialized, requestId);
+          });
+        }
+        return;
+      }
       const sourceReview = /^\/internal\/source-review\/(inspect|begin|propose|confirm|reject|hold|release|withdraw)$/.exec(path);
       if (sourceReview) {
         if (request.method !== 'POST') reject(405, 'METHOD_NOT_ALLOWED');
@@ -288,7 +331,7 @@ export async function startInternalEditorialHTTP(options: InternalEditorialHTTPO
           const current = snapshot.revisions.filter(row => row.id === target.id).at(-1);
           if (current) fictionalSources(snapshot, current.sourceIds);
         }
-      } } });
+      }, ...(typeof scopedPolicy.sourceReadRevision === 'function' ? { sourceReadRevision: () => scopedPolicy.sourceReadRevision!() } : {}) } });
       // The facade reloads current identity/session/roles and checks exact resources under its mutation lock.
       let result: unknown;
       if (path === '/internal/session/revoke') {

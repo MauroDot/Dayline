@@ -7,6 +7,7 @@ import { occurrenceOn, validateDefinition } from '../scheduling/calendar.ts';
 import type { PreparationSchedule, ScheduleDefinition } from '../scheduling/types.ts';
 import { roles, permissions } from '../security/types.ts';
 import { validSourceReviewHistory } from '../source-review/types.ts';
+import { validStorySourceHandoff } from '../source-handoff/types.ts';
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): value is RecordValue => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -20,7 +21,32 @@ const rows = (value: unknown, valid: (row: RecordValue) => boolean): value is Re
 const verified = (value: unknown): boolean => typeof value === 'string' && ['UNVERIFIED', 'VERIFIED', 'DISPUTED'].includes(value);
 const source = (row: RecordValue): boolean => strings(row, ['id', 'publisher', 'url', 'canonicalUrl', 'type', 'publishedAt', 'retrievedAt', 'originId', 'rights']) && ['PRIMARY', 'ORIGINAL', 'SYNDICATED', 'SECONDARY'].includes(row.type as string) && verified(row.verification);
 const evidence = (row: RecordValue): boolean => strings(row, ['id', 'claim', 'uncertainty']) && verified(row.verification) && ['support', 'contradict', 'reviewerDecisions'].every(key => stringArray(row[key]));
-const revision = (row: RecordValue): boolean => strings(row, ['id', 'headline', 'topic', 'summary', 'geography', 'firstSeenAt', 'updatedAt', 'status']) && ['INGESTED', 'CLUSTERED', 'DRAFT', 'NEEDS_REVIEW', 'APPROVED', 'PUBLISHED', 'REJECTED', 'ON_HOLD', 'CORRECTION_REQUIRED'].includes(row.status as string) && nullableString(row.eventAt) && nullableString(row.clusterId) && positiveInteger(row.version) && stringArray(row.sourceIds) && rows(row.evidence, evidence) && optionalRedaction(row);
+function revision(row: RecordValue): boolean {
+  if (!(strings(row, ['id', 'headline', 'topic', 'summary', 'geography', 'firstSeenAt', 'updatedAt', 'status'])
+    && ['INGESTED', 'CLUSTERED', 'DRAFT', 'NEEDS_REVIEW', 'APPROVED', 'PUBLISHED', 'REJECTED', 'ON_HOLD', 'CORRECTION_REQUIRED'].includes(row.status as string)
+    && nullableString(row.eventAt) && nullableString(row.clusterId) && positiveInteger(row.version) && stringArray(row.sourceIds)
+    && rows(row.evidence, evidence) && optionalRedaction(row))) return false;
+  if (!Object.hasOwn(row, 'sourceHandoff')) return true;
+  const binding = row.sourceHandoff;
+  return !row.retentionRedacted && validStorySourceHandoff(binding) && Array.isArray(row.sourceIds)
+    && row.sourceIds.length === binding.selected.length && new Set(row.sourceIds).size === row.sourceIds.length
+    && row.sourceIds.every(id => binding.selected.some(source => source.id === id));
+}
+function handoffHistory(revisions: RecordValue[]): boolean {
+  const previous = new Map<string, RecordValue>();
+  for (const row of revisions) {
+    const prior = previous.get(row.id as string), bound = Object.hasOwn(row, 'sourceHandoff');
+    if (bound) {
+      if (!utcTimestamp(row.updatedAt) || Date.parse((row.sourceHandoff as { preparedAt: string }).preparedAt) > Date.parse(row.updatedAt)) return false;
+      if (!prior && row.version !== 1) return false;
+    }
+    if (prior && (bound || Object.hasOwn(prior, 'sourceHandoff'))
+      && (JSON.stringify(orderedJSON(row.sourceHandoff)) !== JSON.stringify(orderedJSON(prior.sourceHandoff))
+        || (row.version as number) !== (prior.version as number) + 1)) return false;
+    previous.set(row.id as string, row);
+  }
+  return true;
+}
 const approval = (row: RecordValue): boolean => strings(row, ['storyId', 'reviewer', 'at']) && positiveInteger(row.version) && optionalRedaction(row);
 const audit = (row: RecordValue): boolean => strings(row, ['id', 'action', 'actor', 'at']) && nullableString(row.storyId) && (row.version === null || positiveInteger(row.version)) && (row.subjectId === undefined || typeof row.subjectId === 'string') && ['scheduleId', 'preparationRunId'].every(key => !Object.hasOwn(row, key) || identifier(row[key]));
 const baseArrays = (value: RecordValue): boolean => rows(value.sources, source) && rows(value.revisions, revision) && rows(value.approvals, approval) && rows(value.audit, audit);
@@ -247,6 +273,8 @@ function orderedJSON(value: unknown): unknown {
 
 function stateFromJSON(value: unknown): State {
   if (!record(value) || !baseArrays(value)) throw Error('Invalid repository format');
+  if (!handoffHistory(value.revisions as RecordValue[])) throw Error('Invalid repository format');
+  if (value.schema !== 7 && (value.revisions as RecordValue[]).some(row => Object.hasOwn(row, 'sourceHandoff'))) throw Error('Invalid repository format');
   if (Object.hasOwn(value, 'sourceReviews') && (value.schema !== 7 || !validSourceReviewHistory(value.sourceReviews))) throw Error('Invalid repository format');
   if (value.schema !== 7 && ['identities', 'sessions', 'securityAudit', 'authenticatedActions'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
   if (![6, 7].includes(value.schema as number) && ['schedules', 'preparationRuns'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');

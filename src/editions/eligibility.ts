@@ -3,6 +3,7 @@ import { canonicalURL, validateSource, type State, type Story } from '../newsroo
 import { eligibleSource } from '../ingestion/eligibility.ts';
 import { metadata, retentionDeadline, sourceId, timestamp } from '../ingestion/metadata.ts';
 import { getPolicy, policyStatus, type RegistryPolicy } from '../ingestion/policies.ts';
+import { assertStorySourceHandoff, sourceHandoffValidUntil } from '../source-handoff/domain.ts';
 import type { EditionEvidence, EditionSource, Placement } from './types.ts';
 
 const bounds = Object.freeze({ sources: 64, evidence: 16, headline: 512, summary: 4096, uncertainty: 2048 });
@@ -43,6 +44,7 @@ export function buildPlacement(state: State, storyId: string, storyVersion: numb
     const now = timestamp(at);
     if (typeof featured !== 'boolean') fail();
     const story = approvedStory(state, storyId, storyVersion, now);
+    assertStorySourceHandoff(state, story, at);
     const captured = new Map<string, EditionSource>();
     const visiting = new Set<string>();
     function capture(id: string): void {
@@ -100,8 +102,9 @@ export function buildPlacement(state: State, storyId: string, storyVersion: numb
     });
     const sources = [...captured.values()].sort((left, right) => left.sourceId.localeCompare(right.sourceId));
     if (sources.length > bounds.sources) fail();
+    const boundExpiry = story.sourceHandoff ? sourceHandoffValidUntil(state, story.sourceHandoff.selected.map(row => row.id), at) : null;
     return { storyId, storyVersion, headline: story.headline, summary: story.summary, featured,
       sources, evidence, independentSourceCount: new Set(sources.map(source => source.originId)).size,
-      expiresAt: new Date(Math.min(...sources.map(source => timestamp(source.expiresAt)))).toISOString() };
+      expiresAt: new Date(Math.min(...sources.map(source => timestamp(source.expiresAt)), boundExpiry ?? Infinity)).toISOString() };
   } catch { fail(); }
 }
