@@ -1,7 +1,7 @@
 /** Internal authentication metadata. Credentials and verifier secrets never belong in State. */
 export const roles = ['REPORTER','EDITOR','MANAGING_EDITOR','ADMINISTRATOR'] as const;
 export type Role = typeof roles[number];
-export const permissions = ['STORY_CREATE','STORY_EDIT','STORY_REVIEW','STORY_APPROVE','DRAFT_REVIEW','DRAFT_READY','EDITION_ASSEMBLE','EDITION_REVIEW','EDITION_READY','SCHEDULE_CONFIGURE','SCHEDULE_EXECUTE','IDENTITY_ADMIN','SOURCE_READ'] as const;
+export const permissions = ['STORY_CREATE','STORY_EDIT','STORY_REVIEW','STORY_APPROVE','DRAFT_REVIEW','DRAFT_READY','EDITION_ASSEMBLE','EDITION_REVIEW','EDITION_READY','SCHEDULE_CONFIGURE','SCHEDULE_EXECUTE','IDENTITY_ADMIN','SOURCE_READ','SOURCE_REVIEW','SOURCE_RESOLVE','SOURCE_HOLD','SOURCE_RELEASE'] as const;
 export type Permission = typeof permissions[number];
 export interface IdentityRecord { id:string; status:'ACTIVE'|'DISABLED'; roles:Role[]; provider:{issuer:string;subject:string}; revision:number; credentialVersion:number; credentialsRotatedAt:string|null; createdAt:string; updatedAt:string }
 export interface VerifiedSessionClaims { issuer:string; audience:string; subject:string; sessionId:string; keyId:string; credentialVersion:number; authenticatedAt:string; notBefore:string; expiresAt:string }

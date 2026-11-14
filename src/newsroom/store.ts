@@ -6,6 +6,7 @@ import { sectionIds } from '../editions/types.ts';
 import { occurrenceOn, validateDefinition } from '../scheduling/calendar.ts';
 import type { PreparationSchedule, ScheduleDefinition } from '../scheduling/types.ts';
 import { roles, permissions } from '../security/types.ts';
+import { validSourceReviewHistory } from '../source-review/types.ts';
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): value is RecordValue => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -246,6 +247,7 @@ function orderedJSON(value: unknown): unknown {
 
 function stateFromJSON(value: unknown): State {
   if (!record(value) || !baseArrays(value)) throw Error('Invalid repository format');
+  if (Object.hasOwn(value, 'sourceReviews') && (value.schema !== 7 || !validSourceReviewHistory(value.sourceReviews))) throw Error('Invalid repository format');
   if (value.schema !== 7 && ['identities', 'sessions', 'securityAudit', 'authenticatedActions'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
   if (![6, 7].includes(value.schema as number) && ['schedules', 'preparationRuns'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');
   if (![5, 6, 7].includes(value.schema as number) && ['editions', 'editionReviews'].some(key => Object.hasOwn(value, key))) throw Error('Invalid repository format');

@@ -29,7 +29,7 @@ test('authenticated source access and synthetic credentials remain outside the a
     assert.deepEqual(files, [...requiredPublicFiles, ...optionalPublicFiles, 'package.json', manifestName].sort());
     assert.equal(files.length, 12);
     assert.equal(Object.keys(manifest.files).length, 11);
-    assert.equal(files.some(name => /security|source-queue|source-access|fixtures|tests|\.gitattributes/.test(name)), false);
+    assert.equal(files.some(name => /security|source-queue|source-access|source-review|fixtures|tests|\.gitattributes/.test(name)), false);
     assert.deepEqual(await inspectPublicArtifact(artifact), manifest);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
@@ -45,7 +45,11 @@ test('public runtime never mounts authenticated source reads or administrative m
     try {
       for (const route of ['/internal/source-queue', '/internal/source-queue?view=RECENT&limit=1',
         '/internal/source-queue/approve', '/internal/source-queue/grant', '/api/source-access',
-        '/src/security/source.ts', '/fixtures/source-access-fiction.ts']) {
+        '/src/security/source.ts', '/fixtures/source-access-fiction.ts',
+        '/internal/source-review/inspect', '/internal/source-review/begin', '/internal/source-review/propose',
+        '/internal/source-review/confirm', '/internal/source-review/reject', '/internal/source-review/hold',
+        '/internal/source-review/release', '/internal/source-review/withdraw', '/api/source-review',
+        '/src/security/source-review.ts', '/src/source-review/domain.ts', '/fixtures/source-review-fiction.ts']) {
         for (const method of ['GET', 'HEAD']) {
           const response = await fetch(base + route, { method, headers: { Authorization: 'Bearer fictional-isolation-sentinel' } });
           assert.equal(response.status, 404, `${mode} ${method} ${route}`);
@@ -54,6 +58,13 @@ test('public runtime never mounts authenticated source reads or administrative m
       }
       const mutation = await fetch(base + '/internal/source-queue', { method: 'POST' });
       assert.equal(mutation.status, 405); await mutation.arrayBuffer();
+      for (const action of ['inspect', 'begin', 'propose', 'confirm', 'reject', 'hold', 'release', 'withdraw']) {
+        const response = await fetch(base + '/internal/source-review/' + action, { method: 'POST',
+          headers: { Authorization: 'Bearer fictional-isolation-sentinel', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceId: 'fictional-isolation-sentinel' }) });
+        assert.equal(response.status, 405);
+        assert.equal((await response.text()).includes('fictional-isolation-sentinel'), false);
+      }
       const health = await fetch(base + '/api/health'); assert.equal(health.status, 200); await health.arrayBuffer();
       const ready = await fetch(base + '/api/ready'); assert.equal(ready.status, 503); await ready.arrayBuffer();
       assert.equal(upstream, 0);
